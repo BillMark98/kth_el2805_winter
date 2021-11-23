@@ -113,7 +113,7 @@ class Maze:
                                 map[(i,j, mx,my)] = s;
                                 s += 1;
         return states, map
-    
+
     def __getStateNum(self, pos_state):
         """ given position state (4-tuple) get the state number
 
@@ -147,7 +147,7 @@ class Maze:
         """ randomMove, use to simulate the move of minotaur.
             if no constraint, choose one of the four randomly, otherwise, choose the possible moves uniform randomly
 
-            --- 
+            ---
             Parameters
             ---
             singlePoint_pos : a 2-element tuple, the usual coordinate of a point
@@ -180,22 +180,22 @@ class Maze:
     def __move(self, stateNum, action, statePos):
         """ Makes a step in the maze, given a current position and an action.
             If the action STAY or an inadmissible action is used, the agent stays in place.
-            
+
             Because all the exit statuses are treated as 1 single state, to enable the visualisation,
             requires to specify the state, which will be given as statePos
             ---
             Parameters
             ---
-            
+
             :return next_stateNum, next_statePos
         """
-        
+
         currentState = statePos
         # get the possible minotaur position
         minotaurPositions = self.__randomMove((currentState[2], currentState[3]))
         # randomly pick one minotaurPositions
         minotaurPos = random.sample(minotaurPositions, 1)[0]
-        
+
         # if is Eaten or Exit remain in the stateNum, regardless of the action
         if (stateNum == self.STATE_EATEN or stateNum == self.STATE_EXIT):
             next_stateNum = stateNum
@@ -227,7 +227,7 @@ class Maze:
             next_stateNum : [s1,s2,...]
             next_statePos : [(a_r, a_c, m_r1, m_c1), (a_r, a_c, m_r2, m_c2),...]
             action_rewards: [-1, -1,...]
-            
+
         """
         # Compute the future position given current (stateNum, action)
         if (stateNum != self.STATE_EXIT and stateNum != self.STATE_EATEN):
@@ -252,22 +252,30 @@ class Maze:
                 action_rewards = [self.STEP_REWARD] * len(minotaurPositions)
             next_statePos = [(*agent_pos, *minotaur_pos) for minotaur_pos in minotaurPositions]
             # check if there are states of eaten
-            next_stateNum = [None] * len(next_statePos)
+
+            #HERE
+            next_stateNum = []
             index = 0
             for index in range(len(next_statePos)):
                 # check if being eaten
                 if (self.isEaten(next_statePos[index])):
-                    next_statePos[index] = self.STATE_EATEN
-                    next_stateNum[index] = self.STATE_EATEN
-                    action_rewards[index] = self.EATEN_REWARD
+                    #HERE
+                    if next_stateNum == []:
+                        next_statePos[index] = self.STATE_EATEN
+                        #HERE
+                        next_stateNum.append(self.STATE_EATEN)
+                        action_rewards[index] = self.EATEN_REWARD
                 # check if at exit
                 elif (self.isExit(next_statePos[index])):
-                    next_statePos[index] = self.STATE_EXIT
-                    next_stateNum[index] = self.STATE_EXIT
-                    action_rewards[index] = self.STEP_REWARD
+                    #HERE
+                    if next_stateNum == []:
+                        next_statePos[index] = self.STATE_EXIT
+                        #HERE
+                        next_stateNum.append(self.STATE_EXIT)
+                        action_rewards[index] = self.STEP_REWARD
                     # action_rewards[index] = self.GOAL_REWARD
                 else:
-                    next_stateNum[index] = self.map[next_statePos[index]]
+                    next_stateNum.append(self.map[next_statePos[index]])
 
         elif (stateNum == self.STATE_EXIT):
             next_statePos = [self.STATE_EXIT]
@@ -282,7 +290,7 @@ class Maze:
             next_statePos = [self.STATE_EATEN]
             next_stateNum = [self.STATE_EATEN]
             action_rewards = [self.EATEN_REWARD]
-        
+
         moveResult = dict()
         moveResult['next_statePos'] = next_statePos
         moveResult['next_stateNum'] = next_stateNum
@@ -552,7 +560,7 @@ def make_updateFunc(maze, path, minotaurMaze, grid, fig):
         minotaurPos = (currentPos[2], currentPos[3])
         specialState = False
         if i > 0:
-            
+
             if minotaurMaze.isExit(currentPos):
                 grid.get_celld()[agentPos].set_facecolor(LIGHT_GREEN)
                 grid.get_celld()[agentPos].get_text().set_text('Player is out')
@@ -616,12 +624,12 @@ def animate_solution(maze, path, minotaurMaze, createGIF = True):
         cell.set_width(1.0/cols);
 
 
-    
+
     if createGIF :
         update = make_updateFunc(maze, path, minotaurMaze, grid, fig)
         anim = FuncAnimation(fig, update, frames=np.arange(0, len(path)), interval=200)
         anim.save('maze.gif', dpi=80, writer='imagemagick')
-    else :    
+    else :
 
         # Update the color at each frame
         for i in range(len(path)):
@@ -631,7 +639,7 @@ def animate_solution(maze, path, minotaurMaze, createGIF = True):
             minotaurPos = (currentPos[2], currentPos[3])
             specialState = False
             if i > 0:
-                
+
                 if minotaurMaze.isExit(currentPos):
                     grid.get_celld()[agentPos].set_facecolor(LIGHT_GREEN)
                     grid.get_celld()[agentPos].get_text().set_text('Player is out')
@@ -656,16 +664,18 @@ def animate_solution(maze, path, minotaurMaze, createGIF = True):
             # plot minotaur position
             grid.get_celld()[minotaurPos].set_facecolor(LIGHT_PURPLE)
             grid.get_celld()[minotaurPos].get_text().set_text('Mino')
-            
-            display.display(fig)
-            display.clear_output(wait=True)
-            time.sleep(1)        
+
+            #display.display(fig)
+            #display.clear_output(wait=True)
+            #time.sleep(1)
 # test
+            plt.pause(1)
+        plt.show()
 
 if __name__ == "__main__" :
 
     # change to the file position
-    os.chdir(os.path.abspath(__file__))
+    #os.chdir(os.path.abspath(__file__))
 
     maze = np.array([
         [0, 0, 1, 0, 0, 0, 0, 0],
@@ -675,16 +685,16 @@ if __name__ == "__main__" :
         [0, 0, 0, 0, 0, 0, 0, 0],
         [0, 1, 1, 1, 1, 1, 1, 0],
         [0, 0, 0, 0, 1, 2, 0, 0]
-    ])    
+    ])
 
     env = Maze(maze)
 
     # Finite horizon
     horizon = 20
-    # Solve the MDP problem with dynamic programming 
+    # Solve the MDP problem with dynamic programming
     V, policy= dynamic_programming(env,horizon)
     # Simulate the shortest path starting from position A
     method = 'DynProg';
     start  = (0,0,6,5);
-    path = env.simulate(start, policy, method);    
-    animate_solution(maze, path, env)
+    path = env.simulate(start, policy, method);
+    animate_solution(maze, path, env, createGIF=False)
