@@ -82,6 +82,10 @@ class Maze:
             : return boolean
         """
         return self.maze[pos_state[0], pos_state[1]] == 2
+    
+    def isTerminalStateNum(self, stateNum):
+        """ given state number, return if it is terminal state"""
+        return (stateNum == self.STATE_EXIT) or (stateNum == self.STATE_EATEN)
 
     def __actions(self):
         actions = dict();
@@ -334,6 +338,27 @@ class Maze:
 
         return rewards;
 
+    def getNextStateNum(self, currentStateNum, actionNum):
+        """ given current state num and action num, return the next state num
+            Note there are several possible next state due to the random move of the minotaur
+            so will randomly choose one
+
+        ---
+        Return
+        ----
+            return state number of next possible state
+        
+        ---
+        Exception
+        ---
+            throw exceptions if currentStateNum is terminal state
+        """
+        if (self.isTerminalStateNum(currentStateNum)):
+            raise Exception("state number is terminal state, impossible to derive next move due to degeneracy of states")
+
+        nextStateNum, _ = self.__move(currentStateNum, actionNum, self.states[currentStateNum])
+        return nextStateNum
+
     def simulate(self, start, policy, method):
         if method not in methods:
             error = 'ERROR: the argument method must be in {}'.format(methods);
@@ -374,8 +399,8 @@ class Maze:
             # Add the position in the maze corresponding to the next stateNum
             # to the path
             path.append(next_statePos);
-            # Loop while stateNum is not the goal stateNum
-            while s != next_s:
+            # Loop while stateNum is not terminal state
+            while not self.isTerminalStateNum(next_s):
                 # Update stateNum
                 s = next_s;
                 currentStatePos = next_statePos;
@@ -446,6 +471,10 @@ def dynamic_programming(env, horizon):
         policy[:,t] = np.argmax(Q,1);
     return V, policy;
 
+def exit_probability(env, startPos, timeHorizon):
+    """ given the maze, the startPos, time horizon, calculate the exit probability
+    """
+    pass
 def value_iteration(env, gamma, epsilon):
     """ Solves the shortest path problem using value iteration
         :input Maze env           : The maze environment in which we seek to
@@ -502,6 +531,91 @@ def value_iteration(env, gamma, epsilon):
     # Return the obtained policy
     return V, policy;
 
+
+def qLearning(env, gamma, epsilon, learningRateFunc, episodes = 50000):
+    """ implements the q-learning algorithms
+    
+    ---
+    Parameters:
+    ---
+
+        learningRateFunc: a function, given n (number of visited) will output the learning rate
+
+        episodes: the number of episodes to complete
+    ---
+    Return
+    ----
+
+        Value function V (n_states * 1) policy (n_sates * 1), iterationCounter(episodes * 1), which count how many iterations take for each
+        episode
+    """
+    # The q-learning algorithm requires the knowledge of :
+    # - Transition probabilities
+    # - Rewards
+    # - State space
+    # - Action space
+    # - The finite horizon
+    # - learning rate function
+    p         = env.transition_probabilities;
+    r         = env.rewards;
+    n_states  = env.n_states;
+    n_actions = env.n_actions;
+
+    # Required variables and temporary ones for the QL to run
+    V   = np.zeros(n_states);
+    Q   = np.zeros((n_states, n_actions));
+    # Iteration counter for each episode
+    iterationCounter   = [0] * episodes;
+
+
+    # help function to get next move
+    def nextMoveEpsSoft(stateNum, eps = epsilon / n_actions):
+        # choose random action if random gives a value less than eps
+        if np.random.random() < eps:
+            return random.sample(range(n_actions), 1)[0]
+        else :
+            # choose the greedy
+            return np.argmax(Q[stateNum,:], 1)
+    # get starting position for a new episode:
+    def getStartingStateNum():
+        return random.randint((0, n_states - 1))
+        
+    # Initialization of the Q function
+    for s in range(n_states):
+        for a in range(n_actions):
+            Q[s, a] = r[s, a] + gamma*np.dot(p[:,s,a],V);
+    
+    # begin episodes
+    for episode in range(episodes):
+        # clear all the counts
+        stateVisits = [0] * n_states
+        # get starting state number
+        currentStateNum = getStartingStateNum()
+        current_loopCount = 0
+        while(not env.isTerminalStateNum(currentStateNum)):
+            oldStateNum = currentStateNum
+            # add visit count
+            stateVisits[oldStateNum] += 1
+            # get next move
+            action = nextMoveEpsSoft(currentStateNum)
+            # get next state number
+            currentStateNum = env.getNextStateNum(oldStateNum)
+            # get the reward of the action
+            move_reward = env.rewards[oldStateNum, action]
+            # get the old q value
+            old_qValue = Q[oldStateNum, action]
+            # calculate the difference
+            temporal_difference = move_reward + gamma * np.max(Q[currentStateNum,:]) - old_qValue
+            # update the q value
+            Q[oldStateNum, action] = old_qValue + learningRateFunc(stateVisits[oldStateNum]) * temporal_difference
+            current_loopCount += 1
+        iterationCounter[episode] = current_loopCount
+    # compute the Value Function
+    V = np.max(Q, 1)
+    # compute the policy
+    policy = np.argmax(Q, 1)
+    return V, policy, iterationCounter
+
 def draw_maze(maze):
 
     # # Map a color to each cell in the maze
@@ -539,46 +653,6 @@ def draw_maze(maze):
         cell.set_height(1.0/rows);
         cell.set_width(1.0/cols);
 
-
-
-def make_updateFunc(maze, path, minotaurMaze, grid, fig):
-    """ for the animate function i is the time step
-    """
-    # Update the color at each frame
-    def update(i):
-        currentPos = path[i]
-        # get agent position
-        agentPos = (currentPos[0], currentPos[1])
-        minotaurPos = (currentPos[2], currentPos[3])
-        specialState = False
-        if i > 0:
-            
-            if minotaurMaze.isExit(currentPos):
-                grid.get_celld()[agentPos].set_facecolor(LIGHT_GREEN)
-                grid.get_celld()[agentPos].get_text().set_text('Player is out')
-                specialState = True
-            elif minotaurMaze.isEaten(currentPos):
-                grid.get_celld()[minotaurPos].set_facecolor(LIGHT_RED)
-                grid.get_celld()[minotaurPos].get_text().set_text('Player is eaten')
-                specialState = True
-            # reset the previous visited block
-            # only reset if action is not stay, so previous and current do not coincide
-            if (path[i-1][0] != agentPos[0] or path[i-1][1] != agentPos[1]):
-                grid.get_celld()[(path[i-1][0], path[i-1][1])].set_facecolor(col_map[maze[path[i-1][0],path[i-1][1]]])
-                grid.get_celld()[(path[i-1][0], path[i-1][1])].get_text().set_text('')
-            grid.get_celld()[(path[i-1][2], path[i-1][3])].set_facecolor(col_map[maze[path[i-1][2], path[i-1][3]]])
-            grid.get_celld()[(path[i-1][2], path[i-1][3])].get_text().set_text('')
-        # it is possible that minotaur occupied previously the current agent position
-        # so first eliminate the history minotaur position, then plot the agent
-        # plot agent position if not special state
-        if not specialState :
-            grid.get_celld()[agentPos].set_facecolor(LIGHT_ORANGE)
-            grid.get_celld()[agentPos].get_text().set_text('Player')
-        # plot minotaur position
-        grid.get_celld()[minotaurPos].set_facecolor(LIGHT_PURPLE)
-        grid.get_celld()[minotaurPos].get_text().set_text('Mino')
-        return fig, grid
-
 def animate_solution(maze, path, minotaurMaze, createGIF = True):
 
     # # Map a color to each cell in the maze
@@ -615,57 +689,57 @@ def animate_solution(maze, path, minotaurMaze, createGIF = True):
         cell.set_height(1.0/rows);
         cell.set_width(1.0/cols);
 
-
+    def update(i):
+        currentPos = path[i]
+        # get agent position
+        agentPos = (currentPos[0], currentPos[1])
+        minotaurPos = (currentPos[2], currentPos[3])
+        specialState = False
+        if i > 0:
+            
+            if minotaurMaze.isExit(currentPos):
+                grid.get_celld()[agentPos].set_facecolor(LIGHT_GREEN)
+                grid.get_celld()[agentPos].get_text().set_text('Player is out')
+                specialState = True
+            elif minotaurMaze.isEaten(currentPos):
+                grid.get_celld()[minotaurPos].set_facecolor(LIGHT_RED)
+                grid.get_celld()[minotaurPos].get_text().set_text('Player is eaten')
+                specialState = True
+            # reset the previous visited block
+            # only reset if action is not stay, so previous and current do not coincide
+            if (path[i-1][0] != agentPos[0] or path[i-1][1] != agentPos[1]):
+                grid.get_celld()[(path[i-1][0], path[i-1][1])].set_facecolor(col_map[maze[path[i-1][0],path[i-1][1]]])
+                grid.get_celld()[(path[i-1][0], path[i-1][1])].get_text().set_text('')
+            grid.get_celld()[(path[i-1][2], path[i-1][3])].set_facecolor(col_map[maze[path[i-1][2], path[i-1][3]]])
+            grid.get_celld()[(path[i-1][2], path[i-1][3])].get_text().set_text('')
+        # it is possible that minotaur occupied previously the current agent position
+        # so first eliminate the history minotaur position, then plot the agent
+        # plot agent position if not special state
+        if not specialState :
+            grid.get_celld()[agentPos].set_facecolor(LIGHT_ORANGE)
+            grid.get_celld()[agentPos].get_text().set_text('Player')
+        # plot minotaur position
+        grid.get_celld()[minotaurPos].set_facecolor(LIGHT_PURPLE)
+        grid.get_celld()[minotaurPos].get_text().set_text('Mino')
+        display.display(fig)
+        display.clear_output(wait=True)
+        time.sleep(1)          
     
     if createGIF :
-        update = make_updateFunc(maze, path, minotaurMaze, grid, fig)
         anim = FuncAnimation(fig, update, frames=np.arange(0, len(path)), interval=200)
         anim.save('maze.gif', dpi=80, writer='imagemagick')
     else :    
-
-        # Update the color at each frame
         for i in range(len(path)):
-            currentPos = path[i]
-            # get agent position
-            agentPos = (currentPos[0], currentPos[1])
-            minotaurPos = (currentPos[2], currentPos[3])
-            specialState = False
-            if i > 0:
-                
-                if minotaurMaze.isExit(currentPos):
-                    grid.get_celld()[agentPos].set_facecolor(LIGHT_GREEN)
-                    grid.get_celld()[agentPos].get_text().set_text('Player is out')
-                    specialState = True
-                elif minotaurMaze.isEaten(currentPos):
-                    grid.get_celld()[minotaurPos].set_facecolor(LIGHT_RED)
-                    grid.get_celld()[minotaurPos].get_text().set_text('Player is eaten')
-                    specialState = True
-                # reset the previous visited block
-                # only reset if action is not stay, so previous and current do not coincide
-                if (path[i-1][0] != agentPos[0] or path[i-1][1] != agentPos[1]):
-                    grid.get_celld()[(path[i-1][0], path[i-1][1])].set_facecolor(col_map[maze[path[i-1][0],path[i-1][1]]])
-                    grid.get_celld()[(path[i-1][0], path[i-1][1])].get_text().set_text('')
-                grid.get_celld()[(path[i-1][2], path[i-1][3])].set_facecolor(col_map[maze[path[i-1][2], path[i-1][3]]])
-                grid.get_celld()[(path[i-1][2], path[i-1][3])].get_text().set_text('')
-            # it is possible that minotaur occupied previously the current agent position
-            # so first eliminate the history minotaur position, then plot the agent
-            # plot agent position if not special state
-            if not specialState :
-                grid.get_celld()[agentPos].set_facecolor(LIGHT_ORANGE)
-                grid.get_celld()[agentPos].get_text().set_text('Player')
-            # plot minotaur position
-            grid.get_celld()[minotaurPos].set_facecolor(LIGHT_PURPLE)
-            grid.get_celld()[minotaurPos].get_text().set_text('Mino')
-            
-            display.display(fig)
-            display.clear_output(wait=True)
-            time.sleep(1)        
+            update(i)
+            # display.display(fig)
+            # display.clear_output(wait=True)
+            # time.sleep(1)        
 # test
 
 if __name__ == "__main__" :
 
     # change to the file position
-    os.chdir(os.path.abspath(__file__))
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     maze = np.array([
         [0, 0, 1, 0, 0, 0, 0, 0],
