@@ -50,6 +50,22 @@ In particular `update` does not need to return a function, in this case of `maze
 * [debug](https://www.youtube.com/watch?v=DN8lGUI72Ms)
 
 
+# git notes
+
+* delete a remote branch
+
+```git
+git push origin --delete <branch>
+```
+
+* when try to push to a remote branch, syntax:
+
+```git
+
+git push remoteRepoName localBranch:remoteBranch
+```
+
+
 # tex notes
 
 * [tilde over letter](https://yoo2080.wordpress.com/2014/11/30/putting-a-bar-or-a-tilde-over-a-letter-in-latex/#:~:text=To%20put%20a%20tilde%20over,its%20part%20can%20help%20comparison.&text=To%20put%20a%20bar%20over,%5Ctilde%20is%20to%20%5Cwidetilde%20.)
@@ -84,6 +100,15 @@ the second is only related to the state being eaten
 *  if exit, then always stay in that status
 * if eaten, always stay in that status, in particular could not move to a normal state by some actions
 
+* note the configuration of the matrix
+it is 
+
+(next_state, current_state, action), in particular when fixing one action the resulting is a transition_matrix in the MC context, but transposed!
+
+if M = transition_prob(:,:, a)
+so M(i,j) = P(i | j)  = "prob reaching i starting at j"
+so given a probability state vector, the next step state distribution is M * v  not v^{t} * M
+
 # variables
 
 * rewards :  n_states * n_actions
@@ -113,6 +138,15 @@ the second is only related to the state being eaten
 ## q-learning
 
 * [good example](https://www.analyticsvidhya.com/blog/2021/04/q-learning-algorithm-with-step-by-step-implementation-using-python/)
+
+# key picking
+
+add one coordinate to indicate if key already picked, in this case
+there might be several states that indicate key exactly picked (due to the variable status of the minotaur), these will have a direct transition to the state with exactly the same position, with the picked (5-th) coordinate changed to true(1), this is the only case where the key-not-picked universe could transfer to the key-picked universe  (what is implemented is that for key picking positions, the next position is directly with key-picked set to true, so in essence, there are no (key_picking_pos,keyPicked = 1))
+
+## question
+
+* will it cause problem if after some time, revisit these states (so key already picked)
 
 # Todo
 

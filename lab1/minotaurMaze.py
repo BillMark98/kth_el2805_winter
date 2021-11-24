@@ -52,8 +52,11 @@ class Maze:
     STATE_EXIT = 0
     STATE_EATEN = 1
 
+    # maze value
+    EXIT_POSITION_MAZE_VALUE = 2
+    KEY_POSITION_MAZE_VALUE = 4
 
-    def __init__(self, maze, weights=None, random_rewards=False):
+    def __init__(self, maze, weights=None, random_rewards=False, keyPicking=False):
         """ Constructor of the environment Maze.
 
         maze convention:
@@ -61,8 +64,11 @@ class Maze:
             1 : wall
             2 : exit
             3 : minotaur
+            4 : location of key
+        keyPicking : indicate whether first need to pick up the key
         """
         self.maze                     = maze;
+        self.keyPicking               = keyPicking;
         self.actions                  = self.__actions();
         self.states, self.map         = self.__states();
         self.n_actions                = len(self.actions);
@@ -81,7 +87,33 @@ class Maze:
         """ given position state, test if is at the exit
             : return boolean
         """
-        return self.maze[pos_state[0], pos_state[1]] == 2
+        # first check if eaten
+        if not self.isEaten(pos_state):
+            if (self.keyPicking):
+                return (self.maze[pos_state[0], pos_state[1]] == self.EXIT_POSITION_MAZE_VALUE) and pos_state[4]
+            else:
+                return self.maze[pos_state[0], pos_state[1]] == self.EXIT_POSITION_MAZE_VALUE
+        else:
+            return False
+    
+    def isKeyPickingPos(self, pos_state):
+        """ given position state, test if it is the key position
+            
+        ---
+        Exception
+        ---
+            raise Exception if keyPicking is false
+
+        """
+
+        if (not self.keyPicking):
+            raise Exception("no key to pick, isKeyPickingPos invalid")
+
+        # check if Eaten
+        if not self.isEaten(pos_state):
+            return self.maze[pos_state[0], pos_state[1]] == self.KEY_POSITION_MAZE_VALUE
+        else:
+            return False
     
     def isTerminalStateNum(self, stateNum):
         """ given state number, return if it is terminal state"""
@@ -100,23 +132,50 @@ class Maze:
         states = dict();
         map = dict();
         end = False;
-        # stateNum count from 2, the first two reserved
-        s = 2;
-        states[0] = 0;
-        states[1] = 1;
-        # at most S * S states,
-        # S is the number of squares of the maze
-        # pos_state is of the form (i,j,mx,my), where (i,j) is the position of the explorer theseus (mx,my) pos of minotaur
-        for i in range(self.maze.shape[0]):
-            for j in range(self.maze.shape[1]):
-                if self.maze[i,j] != 1:
-                    for mx in range(self.maze.shape[0]):
-                        for my in range(self.maze.shape[1]):
-                            if not (self.isEaten((i,j,mx,my)) or self.isExit((i,j,mx,my))):
-                                states[s] = (i,j,mx,my);
-                                map[(i,j, mx,my)] = s;
-                                s += 1;
-        return states, map
+        # if no key picking
+
+        if (not self.keyPicking):
+            # stateNum count from 2, the first two reserved
+            s = 2;
+            states[0] = 0;
+            states[1] = 1;
+            # at most S * S states,
+            # S is the number of squares of the maze
+            # pos_state is of the form (i,j,mx,my), where (i,j) is the position of the explorer theseus (mx,my) pos of minotaur
+            for i in range(self.maze.shape[0]):
+                for j in range(self.maze.shape[1]):
+                    if self.maze[i,j] != 1:
+                        for mx in range(self.maze.shape[0]):
+                            for my in range(self.maze.shape[1]):
+                                if not (self.isEaten((i,j,mx,my)) or self.isExit((i,j,mx,my))):
+                                    states[s] = (i,j,mx,my);
+                                    map[(i,j, mx,my)] = s;
+                                    s += 1;
+            return states, map
+        else:
+            # stateNum count from 2, the first two reserved
+            s = 2;
+            states[0] = 0;
+            states[1] = 1;
+            # at most S * S * 2 states,
+            # S is the number of squares of the maze
+            # pos_state is of the form (i,j,mx,my, keyPicked), where (i,j) is the position of the explorer theseus (mx,my) pos of minotaur,
+            # and keyPicked indicate whether the key is keyPicked
+            for keyPicked in range(2):            
+                for i in range(self.maze.shape[0]):
+                    for j in range(self.maze.shape[1]):
+                        if self.maze[i,j] != 1:
+                            for mx in range(self.maze.shape[0]):
+                                for my in range(self.maze.shape[1]):
+                                    if not (self.isEaten((i,j,mx,my)) or self.isExit((i,j,mx,my))):
+                                        # account state if 
+                                        # 1) a normal state (not exit, not eaten, not keypicking)
+                                        # 2) keyPicking but with keyPicked == 0  (since it will directly transform to a keypicked state, so these two states degenerate into one)
+                                        if(not (self.isKeyPickingPos((i,j,mx,my,keyPicked)) and keyPicked == 1)):
+                                            states[s] = (i,j,mx,my,keyPicked);
+                                            map[(i,j, mx,my, keyPicked)] = s;
+                                            s += 1;
+            return states, map            
     
     def __getStateNum(self, pos_state):
         """ given position state (4-tuple) get the state number
@@ -132,6 +191,7 @@ class Maze:
             # normal state use map
             stateNum = self.map[pos_state]
         return stateNum
+
     def __coordinateAddition(self, coord_1, coord_2):
         """ given coord_1, and coord2  two tuples, add componentwise, return a tuple
         """
@@ -231,11 +291,22 @@ class Maze:
             next_stateNum : [s1,s2,...]
             next_statePos : [(a_r, a_c, m_r1, m_c1), (a_r, a_c, m_r2, m_c2),...]
             action_rewards: [-1, -1,...]
-            
+            state_transitionProb : { 0 : 1/4, ...}
+
+            Note that it is possible there are multiple same states, so the probability is not uniform,
+            but need to sum all the occurences of one state and divided by the whole length. This does not apply to the reward calculation,
+            because the multiplicity will be considered during the sum up, see the __rewards function
         """
+
+        # state transition probability dictionary
+        state_transitionProb = dict()
+
         # Compute the future position given current (stateNum, action)
         if (stateNum != self.STATE_EXIT and stateNum != self.STATE_EATEN):
             currentState = self.states[stateNum]
+
+            if (self.keyPicking):
+                keyPicked = currentState[4]               
             agent_row = currentState[0] + self.actions[action][0];
             agent_col = currentState[1] + self.actions[action][1];
 
@@ -254,25 +325,47 @@ class Maze:
             else:
                 agent_pos = (agent_row, agent_col)
                 action_rewards = [self.STEP_REWARD] * len(minotaurPositions)
-            next_statePos = [(*agent_pos, *minotaur_pos) for minotaur_pos in minotaurPositions]
+            if (self.keyPicking):
+                if(self.isKeyPickingPos(currentState)):
+                    keyPicked = True
+                next_statePos = [(*agent_pos, *minotaur_pos, keyPicked) for minotaur_pos in minotaurPositions]
+            else:
+                next_statePos = [(*agent_pos, *minotaur_pos) for minotaur_pos in minotaurPositions]
             # check if there are states of eaten
             next_stateNum = [None] * len(next_statePos)
             index = 0
             for index in range(len(next_statePos)):
+                
                 # check if being eaten
                 if (self.isEaten(next_statePos[index])):
                     next_statePos[index] = self.STATE_EATEN
                     next_stateNum[index] = self.STATE_EATEN
                     action_rewards[index] = self.EATEN_REWARD
+                    if (self.STATE_EATEN not in state_transitionProb):
+                        state_transitionProb[self.STATE_EATEN] = 0
+                    else:
+                        state_transitionProb[self.STATE_EATEN] += 1
                 # check if at exit
                 elif (self.isExit(next_statePos[index])):
                     next_statePos[index] = self.STATE_EXIT
                     next_stateNum[index] = self.STATE_EXIT
                     action_rewards[index] = self.STEP_REWARD
                     # action_rewards[index] = self.GOAL_REWARD
+                    if (self.STATE_EXIT not in state_transitionProb):
+                        state_transitionProb[self.STATE_EXIT] = 0
+                    else:
+                        state_transitionProb[self.STATE_EXIT] += 1
                 else:
                     next_stateNum[index] = self.map[next_statePos[index]]
-
+                    if (next_stateNum[index] in state_transitionProb):
+                        # an error occurred, because this state should be unique
+                        raise Exception("normal state visted more than once!")
+                    state_transitionProb[next_stateNum[index]] = 1
+            # update the prob
+            for key in state_transitionProb.keys():
+                # calculate the probability
+                state_transitionProb[key] /= len(next_statePos)
+            
         elif (stateNum == self.STATE_EXIT):
             next_statePos = [self.STATE_EXIT]
             next_stateNum = [self.STATE_EXIT]
@@ -281,16 +374,20 @@ class Maze:
                 action_rewards = [self.STEP_REWARD]
             else:
                 action_rewards = [self.GOAL_REWARD]
+            state_transitionProb[self.STATE_EXIT] = 1
         else:
             # eaten stateNum
             next_statePos = [self.STATE_EATEN]
             next_stateNum = [self.STATE_EATEN]
             action_rewards = [self.EATEN_REWARD]
+            state_transitionProb[self.STATE_EXIT] = 1
+
         
         moveResult = dict()
         moveResult['next_statePos'] = next_statePos
         moveResult['next_stateNum'] = next_stateNum
         moveResult['action_rewards'] = action_rewards
+        moveResult['state_transitionProb'] = state_transitionProb
         return moveResult
 
     def __transitions(self):
@@ -302,15 +399,14 @@ class Maze:
         dimensions = (self.n_states,self.n_states,self.n_actions);
         transition_probabilities = np.zeros(dimensions);
 
-        # Compute the transition probabilities. Note that the transitions
-        # are deterministic.
+        # Compute the transition probabilities. 
         for s in range(self.n_states):
             for a in range(self.n_actions):
                 moveResult = self.__moveResult(s,a);
-                next_stateNum = moveResult['next_stateNum']
-                stateSize = len(next_stateNum)
-                for next_s in next_stateNum:
-                    transition_probabilities[next_s, s, a] = 1/stateSize;
+                # next_stateNum = moveResult['next_stateNum']
+                state_transitionProb = moveResult['state_transitionProb']
+                for next_s in state_transitionProb.keys():
+                    transition_probabilities[next_s, s, a] = state_transitionProb[next_s];
         return transition_probabilities;
 
     def __rewards(self, weights=None, random_rewards=None):
@@ -359,7 +455,7 @@ class Maze:
         nextStateNum, _ = self.__move(currentStateNum, actionNum, self.states[currentStateNum])
         return nextStateNum
 
-    def simulate(self, start, policy, method):
+    def simulate(self, start, policy, method, **kargs):
         if method not in methods:
             error = 'ERROR: the argument method must be in {}'.format(methods);
             raise NameError(error);
@@ -387,31 +483,40 @@ class Maze:
                 s = next_s;
                 currentStatePos = next_statePos
         if method == 'ValIter':
-            # Initialize current stateNum, next stateNum and time
-            t = 1;
-            s = self.map[start];
-            # var that stores the current state pos
-            currentStatePos = start;
-            # Add the starting position in the maze to the path
-            path.append(start);
-            # Move to next stateNum given the policy and the current stateNum
-            next_s, next_statePos = self.__move(s,policy[s], currentStatePos);
-            # Add the position in the maze corresponding to the next stateNum
-            # to the path
-            path.append(next_statePos);
-            # Loop while stateNum is not terminal state
-            while not self.isTerminalStateNum(next_s):
-                # Update stateNum
-                s = next_s;
-                currentStatePos = next_statePos;
+
+            try:
+            # get time horizon to end (time to live)
+                TTL = kargs["TTL"]
+            except KeyError:
+                print("To simulate value iteration, need to specify time to simulate")
+                return []
+            else:
+                
+                # Initialize current stateNum, next stateNum and time
+                t = 1;
+                s = self.map[start];
+                # var that stores the current state pos
+                currentStatePos = start;
+                # Add the starting position in the maze to the path
+                path.append(start);
                 # Move to next stateNum given the policy and the current stateNum
-                next_s, next_statePos = self.__move(s,policy[s],currentStatePos);
+                next_s, next_statePos = self.__move(s,policy[s], currentStatePos);
                 # Add the position in the maze corresponding to the next stateNum
                 # to the path
-                path.append(next_statePos)
-                # Update time and stateNum for next iteration
-                t +=1;
-        return path
+                path.append(next_statePos);
+                # Loop while stateNum is not terminal state
+                while t < TTL:
+                    # Update stateNum
+                    s = next_s;
+                    currentStatePos = next_statePos;
+                    # Move to next stateNum given the policy and the current stateNum
+                    next_s, next_statePos = self.__move(s,policy[s],currentStatePos);
+                    # Add the position in the maze corresponding to the next stateNum
+                    # to the path
+                    path.append(next_statePos)
+                    # Update time and stateNum for next iteration
+                    t +=1;
+            return path
 
 
     def show(self):
@@ -471,10 +576,7 @@ def dynamic_programming(env, horizon):
         policy[:,t] = np.argmax(Q,1);
     return V, policy;
 
-def exit_probability(env, startPos, timeHorizon):
-    """ given the maze, the startPos, time horizon, calculate the exit probability
-    """
-    pass
+
 def value_iteration(env, gamma, epsilon):
     """ Solves the shortest path problem using value iteration
         :input Maze env           : The maze environment in which we seek to
@@ -616,6 +718,84 @@ def qLearning(env, gamma, epsilon, learningRateFunc, episodes = 50000):
     policy = np.argmax(Q, 1)
     return V, policy, iterationCounter
 
+def exit_probability(env, startPos, method = "DynProg", **kargs):
+    """ given the maze, the startPos, time horizon, calculate the exit probability
+    """
+
+
+    start_vector = np.zeros((env.n_states, 1))
+    start_vector[startPos] = 1.
+    current_state = start_vector
+    if method == "DynProg":
+        try:
+            time_horizon = kargs["time_horizon"]
+        except KeyError:
+            print("Need to speicify time horizon for dynmaic programming")
+            pass
+        else:
+            V, policy= dynamic_programming(env, time_horizon)
+
+            print("For T = ", str(time_horizon) + ": ")
+            for t in range(1, time_horizon+1):
+                if time_horizon==16 and t == 15:
+                    for i in range(len(current_state)):
+                        print(i, ": ", current_state[i])
+                    print(np.sum(current_state))
+                    new_state = np.zeros((env.n_states, 1))
+                    #go through all possible states (basically we loop through current_state)
+                    for state in range(env.n_states):
+                        #if the probability of being in this state is 0, dont bother
+                        #to calculate (saves some time, we dont need this condition)
+                        if current_state[state]!=0.:
+                                #the agent will perform the action according to the policy
+                            action_done = policy[state][t]
+                            print(action_done)
+                                #create one hot encoding of this state to add to new_state
+                            state_vector = np.zeros((env.n_states, 1))
+                            state_vector[state] = 1.
+
+                                #add to new state. current_state[state] is the probability of being
+                                #in state state
+                            print(np.matmul(env.transition_probabilities[:, :, int(action_done)], state_vector))
+                            new_state += current_state[state]*np.matmul(env.transition_probabilities[:, :, int(action_done)], state_vector)
+
+
+                else:
+                    new_state = np.zeros((env.n_states, 1))
+                    #go through all possible states (basically we loop through current_state)
+                    for state in range(env.n_states):
+                        #if the probability of being in this state is 0, dont bother
+                        #to calculate (saves some time, we dont need this condition)
+                        if current_state[state]!=0:
+                                #the agent will perform the action according to the policy
+                            action_done = policy[state][t]
+
+                                #create one hot encoding of this state to add to new_state
+                            state_vector = np.zeros((env.n_states, 1))
+                            state_vector[state] = 1.
+
+                                #add to new state. current_state[state] is the probability of being
+                                #in state state
+                            new_state += current_state[state]*np.matmul(env.transition_probabilities[:, :, int(action_done)], state_vector)
+
+                #after all states have been added to new state we update current_state
+                current_state =new_state
+                #sanity check
+            print("Total probability: ", np.sum(current_state))
+                    
+    elif method == "ValIter":
+        try:
+            gamma = kargs["gamma"]
+            epsilon = kargs["epsilon"]
+        except KeyError:
+            print("Need to specify the gamma and epsilon for value Iteration")
+            pass
+        else:
+            V, policy = value_iteration(env, gamma, epsilon)
+            # todo
+            # analytical solution possible????
+    
+
 def draw_maze(maze):
 
     # # Map a color to each cell in the maze
@@ -653,7 +833,7 @@ def draw_maze(maze):
         cell.set_height(1.0/rows);
         cell.set_width(1.0/cols);
 
-def animate_solution(maze, path, minotaurMaze, createGIF = True):
+def animate_solution(maze, path, minotaurMaze, createGIF = True, saveFigName = "maze.gif"):
 
     # # Map a color to each cell in the maze
     # col_map = {0: WHITE, 1: BLACK, 2: LIGHT_GREEN, -6: LIGHT_RED, -1: LIGHT_RED};
@@ -727,7 +907,7 @@ def animate_solution(maze, path, minotaurMaze, createGIF = True):
     
     if createGIF :
         anim = FuncAnimation(fig, update, frames=np.arange(0, len(path)), interval=200)
-        anim.save('maze.gif', dpi=80, writer='imagemagick')
+        anim.save(saveFigName, dpi=80, writer='imagemagick')
     else :    
         for i in range(len(path)):
             update(i)
@@ -753,12 +933,24 @@ if __name__ == "__main__" :
 
     env = Maze(maze)
 
-    # Finite horizon
-    horizon = 20
-    # Solve the MDP problem with dynamic programming 
-    V, policy= dynamic_programming(env,horizon)
-    # Simulate the shortest path starting from position A
-    method = 'DynProg';
+    # # Finite horizon
+    # horizon = 20
+    # # Solve the MDP problem with dynamic programming 
+    # V, policy= dynamic_programming(env,horizon)
+    # # Simulate the shortest path starting from position A
+    # method = 'DynProg';
+    # start  = (0,0,6,5);
+    # path = env.simulate(start, policy, method);    
+    # animate_solution(maze, path, env)
+
+    # simulate value iteration
+    life_expectancy = 30
+    gamma = 1 - 1/life_expectancy
+    epsilon = 0.1
+
+    V, policy = value_iteration(env, gamma, epsilon)
+    method = 'ValIter';
     start  = (0,0,6,5);
-    path = env.simulate(start, policy, method);    
-    animate_solution(maze, path, env)
+    path = env.simulate(start, policy, method, TTL = 30);    
+    # print(path)
+    animate_solution(maze, path, env,saveFigName = "mazeValIter.gif")
