@@ -170,8 +170,8 @@ class Maze:
                                     if not (self.isEaten((i,j,mx,my)) or self.isExit((i,j,mx,my))):
                                         # account state if 
                                         # 1) a normal state (not exit, not eaten, not keypicking)
-                                        # 2) keyPicking but with keyPicked == 0  (since it will directly transform to a keypicked state, so these two states degenerate into one)
-                                        if(not (self.isKeyPickingPos((i,j,mx,my,keyPicked)) and keyPicked == 1)):
+                                        # 2) keyPicking but with keyPicked == 1  (since it will directly transform to a keypicked state, so these two states degenerate into one)
+                                        if(not (self.isKeyPickingPos((i,j,mx,my,keyPicked)) and keyPicked == 0)):
                                             states[s] = (i,j,mx,my,keyPicked);
                                             map[(i,j, mx,my, keyPicked)] = s;
                                             s += 1;
@@ -188,6 +188,8 @@ class Maze:
         elif self.isEaten(pos_state):
             stateNum = self.STATE_EATEN
         else:
+            if (self.keyPicking and self.isKeyPickingPos(pos_state)):
+                pos_state[4] = 1
             # normal state use map
             stateNum = self.map[pos_state]
         return stateNum
@@ -207,22 +209,23 @@ class Maze:
                                 (col == -1) or (col == self.maze.shape[1]) or \
                                 (self.maze[row,col] == 1);
 
-    def __randomMove(self, singlePoint_pos):
+    def __randomMove(self, minotaurPos, agentPos = ""):
         """ randomMove, use to simulate the move of minotaur.
             if no constraint, choose one of the four randomly, otherwise, choose the possible moves uniform randomly
 
+            if keyFinding is true, then will use agent position to 
             --- 
             Parameters
             ---
-            singlePoint_pos : a 2-element tuple, the usual coordinate of a point
+            minotaurPos : a 2-element tuple, the usual coordinate of a point
 
             ---
             return
             ---
             return a list of possible states
         """
-        row = singlePoint_pos[0]
-        col = singlePoint_pos[1]
+        row = minotaurPos[0]
+        col = minotaurPos[1]
         possibleActions = [self.MOVE_LEFT,self.MOVE_RIGHT, self.MOVE_UP, self.MOVE_DOWN]
 
         if row == 0:
@@ -238,7 +241,7 @@ class Maze:
         # get the actionMoves
         actionMoves = [self.actions[actionName] for actionName in possibleActions]
 
-        possibleNextStates = [self.__coordinateAddition(singlePoint_pos, action) for action in actionMoves]
+        possibleNextStates = [self.__coordinateAddition(minotaurPos, action) for action in actionMoves]
         return possibleNextStates
 
     def __move(self, stateNum, action, statePos):
@@ -342,7 +345,7 @@ class Maze:
                     next_stateNum[index] = self.STATE_EATEN
                     action_rewards[index] = self.EATEN_REWARD
                     if (self.STATE_EATEN not in state_transitionProb):
-                        state_transitionProb[self.STATE_EATEN] = 0
+                        state_transitionProb[self.STATE_EATEN] = 1
                     else:
                         state_transitionProb[self.STATE_EATEN] += 1
                 # check if at exit
@@ -352,7 +355,7 @@ class Maze:
                     action_rewards[index] = self.STEP_REWARD
                     # action_rewards[index] = self.GOAL_REWARD
                     if (self.STATE_EXIT not in state_transitionProb):
-                        state_transitionProb[self.STATE_EXIT] = 0
+                        state_transitionProb[self.STATE_EXIT] = 1
                     else:
                         state_transitionProb[self.STATE_EXIT] += 1
                 else:
@@ -485,14 +488,15 @@ class Maze:
         if method == 'ValIter':
 
             try:
-            # get time horizon to end (time to live)
-                TTL = kargs["TTL"]
+                # get the probability to survive
+                probability_to_survive = kargs["prob"]
             except KeyError:
-                print("To simulate value iteration, need to specify time to simulate")
+                print("To simulate value iteration, need to specify prob to survive")
                 return []
             else:
                 
-                # Initialize current stateNum, next stateNum and time
+                    # Initialize current stateNum, next stateNum and time
+
                 t = 1;
                 s = self.map[start];
                 # var that stores the current state pos
@@ -504,18 +508,23 @@ class Maze:
                 # Add the position in the maze corresponding to the next stateNum
                 # to the path
                 path.append(next_statePos);
-                # Loop while stateNum is not terminal state
-                while t < TTL:
+                # Loop while stateNum is not terminal state or the time is before ttl
+                while not self.isTerminalStateNum(next_s):
                     # Update stateNum
                     s = next_s;
                     currentStatePos = next_statePos;
-                    # Move to next stateNum given the policy and the current stateNum
-                    next_s, next_statePos = self.__move(s,policy[s],currentStatePos);
-                    # Add the position in the maze corresponding to the next stateNum
-                    # to the path
-                    path.append(next_statePos)
-                    # Update time and stateNum for next iteration
-                    t +=1;
+                    random_number = np.random.rand()
+                    if random_number>probability_to_survive:
+                        break
+                    else:
+
+                        # Move to next stateNum given the policy and the current stateNum
+                        next_s, next_statePos = self.__move(s,policy[s],currentStatePos);
+                        # Add the position in the maze corresponding to the next stateNum
+                        # to the path
+                        path.append(next_statePos)
+                        # Update time and stateNum for next iteration
+                        t +=1;
             return path
 
 
@@ -906,7 +915,7 @@ def animate_solution(maze, path, minotaurMaze, createGIF = True, saveFigName = "
         time.sleep(1)          
     
     if createGIF :
-        anim = FuncAnimation(fig, update, frames=np.arange(0, len(path)), interval=200)
+        anim = FuncAnimation(fig, update, frames=np.arange(0, len(path)), interval=500)
         anim.save(saveFigName, dpi=80, writer='imagemagick')
     else :    
         for i in range(len(path)):
