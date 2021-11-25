@@ -341,8 +341,8 @@ class Maze:
                 elif (self.isExit(next_statePos[index])):
                     next_statePos[index] = self.STATE_EXIT
                     next_stateNum[index] = self.STATE_EXIT
-                    action_rewards[index] = self.STEP_REWARD
-                    # action_rewards[index] = self.GOAL_REWARD
+                    #action_rewards[index] = self.STEP_REWARD
+                    action_rewards[index] = self.GOAL_REWARD
                     if (self.STATE_EXIT not in state_transitionProb):
                         state_transitionProb[self.STATE_EXIT] = 1
                     else:
@@ -362,10 +362,10 @@ class Maze:
             next_statePos = [self.STATE_EXIT]
             next_stateNum = [self.STATE_EXIT]
 
-            if (action != self.STAY):
-                action_rewards = [self.STEP_REWARD]
-            else:
-                action_rewards = [self.GOAL_REWARD]
+            #if (action != self.STAY):
+            action_rewards = [self.STEP_REWARD]
+            #else:
+                #action_rewards = [self.GOAL_REWARD]
             state_transitionProb[self.STATE_EXIT] = 1
         else:
             # eaten stateNum
@@ -462,7 +462,7 @@ class Maze:
             currentStatePos = start
             # Add the starting position in the maze to the path
             path.append(start);
-            while t < horizon-1:
+            while t <= horizon-1:
                 # Move to next stateNum given the policy and the current stateNum
                 # if multiple states, randomly chosen one
                 next_s, next_statePos = self.__move(s,policy[s,t], currentStatePos);
