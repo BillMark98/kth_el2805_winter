@@ -1,3 +1,5 @@
+# Mikael Westlund   personal no. 9803217851
+# Panwei Hu t-no. 980709T518 
 from minotaurMaze import Maze, dynamic_programming, animate_solution
 import numpy as np
 import matplotlib.pyplot as plt

@@ -1,3 +1,5 @@
+# Mikael Westlund   personal no. 9803217851
+# Panwei Hu t-no. 980709T518 
 from minotaurMaze import Maze, dynamic_programming, animate_solution
 import numpy as np
 
@@ -22,3 +24,4 @@ method = 'DynProg';
 start  = (0,0,6,5);
 path = env.simulate(start, policy, method);
 animate_solution(maze, path, env, createGIF=False)
+print(path)
