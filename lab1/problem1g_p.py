@@ -1,9 +1,11 @@
 # Mikael Westlund   personal no. 9803217851
 # Panwei Hu t-no. 980709T518 
-from minotaurMaze import Maze, value_iteration, animate_solution
+import os
+from minotaurMaze import Maze, value_iteration, animate_solution, change2FileDir
 import numpy as np
 import matplotlib.pyplot as plt
 
+change2FileDir()
 
 # key Picking
 
@@ -32,12 +34,9 @@ method = 'ValIter';
 start  = (0,0,6,5,0);
 path = env.simulate(start, policy, method, prob = gamma);    
 # print(path)
-animate_solution(maze, path, env,saveFigName = "mazeValIter_keyPicking.gif")
+animate_solution(maze, path, env,saveFigName = "mazeValIter_keyPicking_mac.gif")
 
 # output the V and policy
-np.savetxt("valueIter_V.txt", V, fmt = "%5.4f")
-np.savetxt("valIter_policy.txt", policy, fmt = "%5d")
+np.savetxt("valueIter_V_mac.txt", V, fmt = "%5.4f")
+np.savetxt("valIter_policy_mac.txt", policy, fmt = "%5d")
 
-
-
-# q-learning

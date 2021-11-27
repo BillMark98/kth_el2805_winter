@@ -10,6 +10,8 @@ from matplotlib.animation import FuncAnimation
 
 import os
 
+# the fignum for figure
+FIGNUM = 1
 def change2FileDir():
     """ change working directory to the current file directory"""
     # change to the file position
@@ -67,7 +69,7 @@ class Maze:
     # for the random move of the minotaur with key picking
     PROB_TOWARD_AGENT = 0.35
 
-    def __init__(self, maze, weights=None, random_rewards=False, keyPicking=False, greedyGoal = False):
+    def __init__(self, maze, weights=None, random_rewards=False, keyPicking=False, greedyGoal = False, probability_to_survive = 1):
         """ Constructor of the environment Maze.
 
         maze convention:
@@ -84,8 +86,11 @@ class Maze:
         if set to True, the moment one hits exit, one still gets a step reward cost, and will only keep the reward if one keeps in that state,
         so this will force the agent to move to exit as long it is near the exit.
 
+        probability_to_survive: a variable that indicates the probability the agent will survive the next move due to poisoning
         """
         self.maze                     = maze;
+        self.exit_pos                 = None
+        self.probability_to_survive   = probability_to_survive
         self.keyPicking               = keyPicking;
         self.greedyGoal               = greedyGoal
                                                           
@@ -96,6 +101,7 @@ class Maze:
         self.transition_probabilities = self.__transitions();
         self.rewards                  = self.__rewards(weights=weights,
                                                 random_rewards=random_rewards);
+
 
     def isEaten(self, pos_state):
         """ given position state pos_state, test if sueseth is eaten
@@ -151,6 +157,36 @@ class Maze:
         """ given state number, return if it is terminal state"""
         return (stateNum == self.STATE_EXIT) or (stateNum == self.STATE_EATEN)
 
+    def getRandomState(self):
+        """ return a random state, compacted in a dictionary, 
+            keys : "stateNum", "statePos"
+        """
+        stateNum = random.randint(0, self.n_states - 1)
+        stateDict = dict()
+        stateDict["stateNum"] = stateNum
+        if not (self.isTerminalStateNum(stateNum)):
+            stateDict["statePos"] = self.states[stateNum]
+        elif (stateNum == self.STATE_EXIT):
+            agentPos = self.exit_pos
+            # if (agentPos is None):
+            #     agentPos = (6,5)  # hot fix
+            # choose random minotaur pos that is different from agentPos
+            minotaurPos = (0,0)
+            if minotaurPos == agentPos :
+                minotaurPos = (1,0)
+            stateDict["statePos"] = (*agentPos, *minotaurPos)
+        elif (stateNum == self.STATE_EATEN):
+            # STATE_EATEN
+            # choose overlap state
+            if (self.keyPicking):
+                stateDict["statePos"] = (0,0,0,0,0)
+            else:
+                stateDict["statePos"] = (0,0,0,0)
+        return stateDict
+
+
+        
+
     def __actions(self):
         actions = dict();
         actions[self.STAY]       = (0, 0);
@@ -183,6 +219,8 @@ class Maze:
                                     states[s] = (i,j,mx,my);
                                     map[(i,j, mx,my)] = s;
                                     s += 1;
+                    if (self.map[i,j] == self.EXIT_POSITION_MAZE_VALUE):
+                            self.exit_pos = (i,j)
             return states, map
         else:
             # stateNum count from 2, the first two reserved
@@ -207,6 +245,9 @@ class Maze:
                                             states[s] = (i,j,mx,my,keyPicked);
                                             map[(i,j, mx,my, keyPicked)] = s;
                                             s += 1;
+                        if (self.maze[i,j] == self.EXIT_POSITION_MAZE_VALUE):
+                            self.exit_pos = (i,j)
+                                        
             return states, map            
     
     def __getStateNum(self, pos_state):
@@ -308,14 +349,29 @@ class Maze:
             
             Because all the exit statuses are treated as 1 single state, to enable the visualisation,
             requires to specify the state, which will be given as statePos
+            
+            Note that the next state is definite, so will return instantaneous reward
             ---
             Parameters
             ---
-            
-            :return next_stateNum, next_statePos
+            stateNum : the state number
+
+            ---
+            Return
+            ----
+            return a dictionary, with
+            structure: 
+            {
+                "next_stateNum" : 3,
+                "next_statePos" : (a,b,c,d,[])
+                "reward_instantaneous" : -1
+            }
+            where reward_instantaneous is the reward from the current state to this next state
         """
         
         currentState = statePos
+        reward_instantaneous = None
+        stateDict = dict()
         # get the possible minotaur position
         if (self.keyPicking):
             minotaurPositions = self.__randomMove((currentState[2], currentState[3]), (currentState[0], currentState[1]))
@@ -326,10 +382,9 @@ class Maze:
         minotaurPos = random.sample(minotaurPositions, 1)[0]
         
         # if is Eaten or Exit remain in the stateNum, regardless of the action
-        if (stateNum == self.STATE_EATEN or stateNum == self.STATE_EXIT):
+        if (stateNum == self.STATE_EATEN)  or (stateNum == self.STATE_EXIT):
             next_stateNum = stateNum
             agent_pos = (currentState[0], currentState[1])
-
         # general stateNum, choose one possible minotaur move and return corresponding stateNum
         else:
             agent_row = currentState[0] + self.actions[action][0];
@@ -340,6 +395,7 @@ class Maze:
             # Based on the impossiblity check return the next state.
             if hitting_maze_walls:
                 agent_pos = (currentState[0], currentState[1])
+                reward_instantaneous = self.IMPOSSIBLE_REWARD
             else:
                 agent_pos = (agent_row, agent_col)
             if (self.keyPicking):
@@ -355,7 +411,21 @@ class Maze:
             next_statePos = (*agent_pos, *minotaurPos, keyPicked)
         else:
             next_statePos = (*agent_pos, *minotaurPos)
-        return next_stateNum, next_statePos
+        
+        # update the reward_instantaneous
+        if (next_stateNum == self.STATE_EATEN):
+            reward_instantaneous = self.EATEN_REWARD
+        elif (next_stateNum == self.STATE_EXIT) and (reward_instantaneous is None):
+            # rule out the possibility that current state is at exit and chooses to hit a wall
+            reward_instantaneous = self.GOAL_REWARD
+        elif (reward_instantaneous is None):
+            # the usual step
+            reward_instantaneous = self.STEP_REWARD
+        
+        stateDict["next_stateNum"] = next_stateNum
+        stateDict["next_statePos"] = next_statePos
+        stateDict["reward_instantaneous"] = reward_instantaneous
+        return stateDict
 
     def __moveResult(self, stateNum, action):
         """ Makes a step in the maze, given a current position and an action.
@@ -436,10 +506,12 @@ class Maze:
                 elif (self.isExit(next_statePos[index])):
                     next_statePos[index] = self.STATE_EXIT
                     next_stateNum[index] = self.STATE_EXIT
-                    if (self.greedyGoal):
-                        action_rewards[index] = self.STEP_REWARD
-                    else:
-                        action_rewards[index] = self.GOAL_REWARD
+                    # if (self.greedyGoal):
+                    #     action_rewards[index] = self.STEP_REWARD
+                    # else:
+                    #     action_rewards[index] = self.GOAL_REWARD
+                    action_rewards[index] = self.GOAL_REWARD
+
                     if (self.STATE_EXIT not in state_transitionProb):
                         state_transitionProb[self.STATE_EXIT] = 1
                     else:
@@ -526,7 +598,7 @@ class Maze:
 
         return rewards;
 
-    def getNextStateNum(self, currentStateNum, currentState_actionNum):
+    def getNextState(self, currentStateNum, currentState_actionNum):
         """ given current state num and action num, return the next state num
             Note there are several possible next state due to the random move of the minotaur
             so will randomly choose one
@@ -534,7 +606,14 @@ class Maze:
         ---
         Return
         ----
-            return state number of next possible state
+            return state dictionary of next possible state
+            structure: 
+            {
+                "next_stateNum" : 3,
+                "next_statePos" : (a,b,c,d,[])
+                "reward_instantaneous" : -1
+            }
+            where reward_instantaneous is the reward from the current state to this next state
         
         ---
         Exception
@@ -544,8 +623,8 @@ class Maze:
         if (self.isTerminalStateNum(currentStateNum)):
             raise Exception("state number is terminal state, impossible to derive next move due to degeneracy of states")
 
-        nextStateNum, _ = self.__move(currentStateNum, currentState_actionNum, self.states[currentStateNum])
-        return nextStateNum
+        nextStateDict = self.__move(currentStateNum, currentState_actionNum, self.states[currentStateNum])
+        return nextStateDict
 
     def simulate(self, start, policy, method, **kargs):
         if method not in methods:
@@ -566,7 +645,10 @@ class Maze:
             while t <= horizon-1:
                 # Move to next stateNum given the policy and the current stateNum
                 # if multiple states, randomly chosen one
-                next_s, next_statePos = self.__move(s,policy[s,t], currentStatePos);
+                nextStateDict = self.__move(s,policy[s,t], currentStatePos);
+                next_s = nextStateDict["next_stateNum"]
+                next_statePos = nextStateDict["next_statePos"]
+                                  
                 # Add the position in the maze corresponding to the next stateNum
                 # to the path
                 path.append(next_statePos)
@@ -593,7 +675,10 @@ class Maze:
                 # Add the starting position in the maze to the path
                 path.append(start);
                 # Move to next stateNum given the policy and the current stateNum
-                next_s, next_statePos = self.__move(s,policy[s], currentStatePos);
+                nextStateDict = self.__move(s,policy[s], currentStatePos);
+                next_s = nextStateDict["next_stateNum"]
+                next_statePos = nextStateDict["next_statePos"]
+                                  
                 # Add the position in the maze corresponding to the next stateNum
                 # to the path
                 path.append(next_statePos);
@@ -608,7 +693,10 @@ class Maze:
                     else:
 
                         # Move to next stateNum given the policy and the current stateNum
-                        next_s, next_statePos = self.__move(s,policy[s],currentStatePos);
+                        nextStateDict = self.__move(s,policy[s],currentStatePos);
+                        next_s = nextStateDict["next_stateNum"]
+                        next_statePos = nextStateDict["next_statePos"]
+                                    
                         # Add the position in the maze corresponding to the next stateNum
                         # to the path
                         path.append(next_statePos)
@@ -633,7 +721,9 @@ class Maze:
                 # Add the starting position in the maze to the path
                 path.append(start);
                 # Move to next stateNum given the policy and the current stateNum
-                next_s, next_statePos = self.__move(s,policy[s], currentStatePos);
+                nextStateDict = self.__move(s,policy[s], currentStatePos);
+                next_s = nextStateDict["next_stateNum"]
+                next_statePos = nextStateDict["next_statePos"]
                 # Add the position in the maze corresponding to the next stateNum
                 # to the path
                 path.append(next_statePos);
@@ -648,7 +738,9 @@ class Maze:
                     else:
 
                         # Move to next stateNum given the policy and the current stateNum
-                        next_s, next_statePos = self.__move(s,policy[s],currentStatePos);
+                        nextStateDict = self.__move(s,policy[s],currentStatePos);
+                        next_s = nextStateDict["next_stateNum"]
+                        next_statePos = nextStateDict["next_statePos"]
                         # Add the position in the maze corresponding to the next stateNum
                         # to the path
                         path.append(next_statePos)
@@ -772,7 +864,7 @@ def value_iteration(env, gamma, epsilon):
     return V, policy;
 
 
-def qLearning(env, gamma, epsilon, learningRateFunc, episodes = 50000):
+def qLearning(env, gamma, epsilon, learningRateFunc, episodes = 50000, nextMovePolicy="greedy"):
     """ implements the q-learning algorithms
     
     ---
@@ -783,6 +875,10 @@ def qLearning(env, gamma, epsilon, learningRateFunc, episodes = 50000):
         where n is of the form n(s,a)  (function of BOTH state AND action)
 
         episodes: the number of episodes to complete
+        nextMovePolicy : the policy used to determine the next move (epsilon soft)
+            "greedy" : epsilon-greedy, i.e. will use the updated Q value
+            "fixed" : will use the original Q-value
+            "random" : completely random
     ---
     Return
     ----
@@ -805,20 +901,32 @@ def qLearning(env, gamma, epsilon, learningRateFunc, episodes = 50000):
     # Required variables and temporary ones for the QL to run
     V   = np.zeros(n_states);
     Q   = np.zeros((n_states, n_actions));
+    Q_orig = np.zeros((n_states, n_actions)) # stores the initialized Q-value
     # Iteration counter for each episode
     iterationCounter   = [0] * episodes;
 
     # Value Function over episodes, to see the convergence speed
     V_over_episodes = np.zeros((n_states, episodes))
     # help function to get next move
-    def nextMoveEpsSoft(stateNum, eps = epsilon / n_actions):
+    def nextMoveEpsSoft(stateNum, eps = epsilon / n_actions, method = "greedy"):
         """ return next action number with epsilon soft policy"""
         # choose random action if random gives a value less than eps
-        if np.random.random() < eps:
+        if (method == "greedy"):
+            if np.random.random() < eps:
+                return random.sample(range(n_actions), 1)[0]
+            else :
+                # choose the greedy
+                return np.argmax(Q[stateNum,:])
+        elif (method == "fixed"):
+            if np.random.random() < eps:
+                return random.sample(range(n_actions), 1)[0]
+            else :
+                # choose the greedy w.r.t initial Q
+                return np.argmax(Q_orig[stateNum,:])
+        elif (method == "random"):
+        # completely random move
             return random.sample(range(n_actions), 1)[0]
-        else :
-            # choose the greedy
-            return np.argmax(Q[stateNum,:])
+
     # get starting position for a new episode:
     def getStartingStateNum():
         return random.randint(0, n_states - 1)
@@ -827,7 +935,7 @@ def qLearning(env, gamma, epsilon, learningRateFunc, episodes = 50000):
     for s in range(n_states):
         for a in range(n_actions):
             Q[s, a] = r[s, a] + gamma*np.dot(p[:,s,a],V);
-    
+            Q_orig[s, a] = Q[s,a]
     # begin episodes
     for episode in range(episodes):
         # clear all the counts
@@ -837,22 +945,28 @@ def qLearning(env, gamma, epsilon, learningRateFunc, episodes = 50000):
         current_loopCount = 0
         while(not env.isTerminalStateNum(futureStateNum)):
             currentStateNum = futureStateNum
-            # get next move
-            currentState_actionNum = nextMoveEpsSoft(currentStateNum)
-            # add visit count
-            stateVisits[currentStateNum, currentState_actionNum] += 1
-                        
-            # get next state number
-            futureStateNum = env.getNextStateNum(currentStateNum, currentState_actionNum)
-            # get the reward of the currentState_actionNum
-            move_reward = env.rewards[currentStateNum, currentState_actionNum]
-            # get the old q value
-            old_qValue = Q[currentStateNum, currentState_actionNum]
-            # calculate the difference
-            temporal_difference = move_reward + gamma * np.max(Q[futureStateNum,:]) - old_qValue
-            # update the q value
-            Q[currentStateNum, currentState_actionNum] = old_qValue + learningRateFunc(stateVisits[currentStateNum, currentState_actionNum]) * temporal_difference
-            current_loopCount += 1
+            # poisoned to death?
+            random_number = np.random.rand()
+            if random_number> env.probability_to_survive:
+                break
+            else:
+                # get next move
+                currentState_actionNum = nextMoveEpsSoft(currentStateNum, method=nextMovePolicy)
+                # add visit count
+                stateVisits[currentStateNum, currentState_actionNum] += 1
+                            
+                # get next state number
+                futureStateDict = env.getNextState(currentStateNum, currentState_actionNum)
+                futureStateNum = futureStateDict["next_stateNum"]
+                # get the reward of the currentState_actionNum
+                move_reward = futureStateDict["reward_instantaneous"]
+                # get the old q value
+                old_qValue = Q[currentStateNum, currentState_actionNum]
+                # calculate the difference
+                temporal_difference = move_reward + gamma * np.max(Q[futureStateNum,:]) - old_qValue
+                # update the q value
+                Q[currentStateNum, currentState_actionNum] = old_qValue + learningRateFunc(stateVisits[currentStateNum, currentState_actionNum]) * temporal_difference
+                current_loopCount += 1
         iterationCounter[episode] = current_loopCount
         V_over_episodes[:, episode] = np.max(Q,1)
     # compute the Value Function
@@ -909,9 +1023,19 @@ def sarsa(env, gamma, epsilon, learningRateFunc, episodes = 50000):
             # choose the greedy
             return np.argmax(Q[stateNum,:])
     # get starting position for a new episode:
+    def getStartingState():
+        """ return a dictionary, contains the start state num and position
+            since the terminal state will terminate immediately, it does not matter which state position
+            simply choose one
+        """
+        startStateDict = env.getRandomState()
+        return startStateDict
+
+        # return env.map[(0,0,6,5,0)]
+    # get starting position for a new episode:
     def getStartingStateNum():
         return random.randint(0, n_states - 1)
-        
+               
     # Initialization of the Q function
     for s in range(n_states):
         for a in range(n_actions):
@@ -922,30 +1046,43 @@ def sarsa(env, gamma, epsilon, learningRateFunc, episodes = 50000):
         # clear all the counts
         stateVisits = np.zeros((n_states,n_actions))
         # get starting state number
+        # futureStateDict = getStartingState()
+        # futureStateNum = futureStateDict["stateNum"]
         futureStateNum = getStartingStateNum()
+        futureState_actionNum = nextMoveEpsSoft(futureStateNum)
+
         current_loopCount = 0
         while(not env.isTerminalStateNum(futureStateNum)):
             currentStateNum = futureStateNum
-            # get next move of the old state
-            currentState_actionNum = nextMoveEpsSoft(currentStateNum)
-            # add visit count
-            stateVisits[currentStateNum, currentState_actionNum] += 1
-                        
-            # get next state number
-            futureStateNum = env.getNextStateNum(currentStateNum, currentState_actionNum)
-            # get next action
-            futureState_actionNum = nextMoveEpsSoft(futureStateNum)
-            # get the reward of the currentState_actionNum
-            move_reward = env.rewards[currentStateNum, currentState_actionNum]
-            # get the old q value
-            old_qValue = Q[currentStateNum, currentState_actionNum]
-            # calculate the difference
-            temporal_difference = move_reward + gamma * Q[futureStateNum, futureState_actionNum] - old_qValue
-            # update the q value
-            Q[currentStateNum, currentState_actionNum] = old_qValue + learningRateFunc(stateVisits[currentStateNum, currentState_actionNum]) * temporal_difference
-            current_loopCount += 1
+            # poisoned to death?
+            random_number = np.random.rand()
+            if random_number> env.probability_to_survive:
+                break
+            else:
+                # get next move of the old state
+                currentState_actionNum = futureState_actionNum
+                # add visit count
+                stateVisits[currentStateNum, currentState_actionNum] += 1
+                            
+                # get next state number
+                futureStateDict = env.getNextState(currentStateNum, currentState_actionNum)
+                futureStateNum = futureStateDict["next_stateNum"]
+
+                # get next action
+                futureState_actionNum = nextMoveEpsSoft(futureStateNum)
+                # get the reward of the currentState_actionNum
+                move_reward = futureStateDict["reward_instantaneous"]
+                # get the old q value
+                old_qValue = Q[currentStateNum, currentState_actionNum]
+                # calculate the difference
+                temporal_difference = move_reward + gamma * Q[futureStateNum, futureState_actionNum] - old_qValue
+                # update the q value
+                Q[currentStateNum, currentState_actionNum] = old_qValue + learningRateFunc(stateVisits[currentStateNum, currentState_actionNum]) * temporal_difference
+                current_loopCount += 1
+
         iterationCounter[episode] = current_loopCount
         V_over_episodes[:, episode] = np.max(Q,1)
+        # print("episode {0} finished".format(episode))
     # compute the Value Function
     V = np.max(Q, 1)
     # compute the policy
@@ -1042,8 +1179,7 @@ def draw_maze(maze):
     colored_maze = [[col_map[maze[j,i]] for i in range(cols)] for j in range(rows)];
 
     # Create figure of the size of the maze
-    fig = plt.figure(1, figsize=(cols,rows));
-
+    fig = plt.figure(figsize=(cols,rows));
     # Remove the axis ticks and add title title
     ax = plt.gca();
     ax.set_title('The Maze');
