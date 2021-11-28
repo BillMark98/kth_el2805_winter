@@ -863,8 +863,7 @@ def value_iteration(env, gamma, epsilon):
     # Return the obtained policy
     return V, policy;
 
-
-def qLearning(env, gamma, epsilon, learningRateFunc, episodes = 50000, nextMovePolicy="greedy"):
+def qLearning(env, gamma, epsilonFunc, learningRateFunc, episodes = 50000, nextMovePolicy="greedy", saveQFunc = True, QFuncFileNameWrite = "qFunc_qLearn.txt", initQFunc = "FromScratch",QFuncFileNameRead = "qFunc_qLearn.txt", visitCountClearEachEpisode = True):
     """ implements the q-learning algorithms
     
     ---
@@ -879,6 +878,7 @@ def qLearning(env, gamma, epsilon, learningRateFunc, episodes = 50000, nextMoveP
             "greedy" : epsilon-greedy, i.e. will use the updated Q value
             "fixed" : will use the original Q-value
             "random" : completely random
+        visitCountClearEachEpisode : boolean indicate whether to clear the visit count to zero after each episode
     ---
     Return
     ----
@@ -904,7 +904,7 @@ def qLearning(env, gamma, epsilon, learningRateFunc, episodes = 50000, nextMoveP
     Q_orig = np.zeros((n_states, n_actions)) # stores the initialized Q-value
     # Iteration counter for each episode
     iterationCounter   = [0] * episodes;
-
+    epsilon = epsilonFunc(1)
     # Value Function over episodes, to see the convergence speed
     V_over_episodes = np.zeros((n_states, episodes))
     # help function to get next move
@@ -930,19 +930,29 @@ def qLearning(env, gamma, epsilon, learningRateFunc, episodes = 50000, nextMoveP
     # get starting position for a new episode:
     def getStartingStateNum():
         return random.randint(0, n_states - 1)
-        
     # Initialization of the Q function
-    for s in range(n_states):
-        for a in range(n_actions):
-            Q[s, a] = r[s, a] + gamma*np.dot(p[:,s,a],V);
-            Q_orig[s, a] = Q[s,a]
+    if (initQFunc == "FromScratch"):
+        for s in range(n_states):
+            for a in range(n_actions):
+                Q[s, a] = r[s, a] + gamma*np.dot(p[:,s,a],V);
+                Q_orig[s,a] = Q[s,a]
+    elif (initQFunc == "FromPrevious"):
+        Q = np.loadtxt(QFuncFileNameRead)
+        Q_orig = np.copy(Q)
+    else:
+        raise Exception("Unknown q function initialisation method")    
     # begin episodes
+    stateVisits = np.zeros((n_states,n_actions))
+
     for episode in range(episodes):
         # clear all the counts
-        stateVisits = np.zeros((n_states,n_actions))
+        if (visitCountClearEachEpisode):
+            stateVisits = np.zeros((n_states,n_actions))
         # get starting state number
         futureStateNum = getStartingStateNum()
         current_loopCount = 0
+        # calculate epsilon
+        epsilon = epsilonFunc(episode + 1)
         while(not env.isTerminalStateNum(futureStateNum)):
             currentStateNum = futureStateNum
             # poisoned to death?
@@ -951,7 +961,7 @@ def qLearning(env, gamma, epsilon, learningRateFunc, episodes = 50000, nextMoveP
                 break
             else:
                 # get next move
-                currentState_actionNum = nextMoveEpsSoft(currentStateNum, method=nextMovePolicy)
+                currentState_actionNum = nextMoveEpsSoft(currentStateNum, method=nextMovePolicy, eps = epsilon/n_actions)
                 # add visit count
                 stateVisits[currentStateNum, currentState_actionNum] += 1
                             
@@ -969,23 +979,39 @@ def qLearning(env, gamma, epsilon, learningRateFunc, episodes = 50000, nextMoveP
                 current_loopCount += 1
         iterationCounter[episode] = current_loopCount
         V_over_episodes[:, episode] = np.max(Q,1)
+    if (saveQFunc):
+        np.savetxt(QFuncFileNameWrite, Q, fmt="%10.6f")        
+    
+    print("qfunc write dirname:")
+    print(os.path.abspath(QFuncFileNameWrite))
     # compute the Value Function
     V = np.max(Q, 1)
     # compute the policy
     policy = np.argmax(Q, 1)
     return V, policy, iterationCounter, V_over_episodes
 
-def sarsa(env, gamma, epsilon, learningRateFunc, episodes = 50000):
+def sarsa(env, gamma, epsilonFunc, learningRateFunc, episodes = 50000, saveQFunc = True, QFuncFileNameWrite = "qFunc_sarsa.txt", initQFunc = "FromScratch",QFuncFileNameRead = "qFunc_sarsa.txt", visitCountClearEachEpisode = True):
     """ implements the sarsa algorithms
     
     ---
     Parameters:
     ---
 
+        epsilonFunc : a function which is function of episode,  calculates the epsilon in each episode
         learningRateFunc: a function, given n (number of visited) will output the learning rate
         where n is of the form n(s,a)  (function of BOTH state AND action)
 
         episodes: the number of episodes to complete
+
+        saveQFunc: if True will save the Q function in to file
+        with filename QFuncFileName
+        
+        QFuncFileNameWrite: filename used to save the q function
+
+        initQFunc: used to tell which method to use 
+            "FromScratch" : initialize Q function using the reward function
+            "FromPrevious" : initialize Q function from previous result, read from the QFuncFileNameRead
+        QFuncFileNameRead: filename used to read the q function for init
     ---
     Return
     ----
@@ -1010,7 +1036,7 @@ def sarsa(env, gamma, epsilon, learningRateFunc, episodes = 50000):
     Q   = np.zeros((n_states, n_actions));
     # Iteration counter for each episode
     iterationCounter   = [0] * episodes;
-
+    epsilon = epsilonFunc(1)
     # Value Function over episodes, to see the convergence speed
     V_over_episodes = np.zeros((n_states, episodes))
     # help function to get next move
@@ -1037,21 +1063,30 @@ def sarsa(env, gamma, epsilon, learningRateFunc, episodes = 50000):
         return random.randint(0, n_states - 1)
                
     # Initialization of the Q function
-    for s in range(n_states):
-        for a in range(n_actions):
-            Q[s, a] = r[s, a] + gamma*np.dot(p[:,s,a],V);
-    
+    if (initQFunc == "FromScratch"):
+        for s in range(n_states):
+            for a in range(n_actions):
+                Q[s, a] = r[s, a] + gamma*np.dot(p[:,s,a],V);
+    elif (initQFunc == "FromPrevious"):
+        Q = np.loadtxt(QFuncFileNameRead)
+    else:
+        raise Exception("Unknown q function initialisation method")
+        # clear all the counts
+    stateVisits = np.zeros((n_states,n_actions))    
     # begin episodes
     for episode in range(episodes):
-        # clear all the counts
-        stateVisits = np.zeros((n_states,n_actions))
+        # # clear all the counts
+        if (visitCountClearEachEpisode):
+            stateVisits = np.zeros((n_states,n_actions))
         # get starting state number
         # futureStateDict = getStartingState()
         # futureStateNum = futureStateDict["stateNum"]
         futureStateNum = getStartingStateNum()
-        futureState_actionNum = nextMoveEpsSoft(futureStateNum)
+        futureState_actionNum = nextMoveEpsSoft(futureStateNum, eps = epsilon / n_actions)
 
         current_loopCount = 0
+        # calculate the epsilon
+        epsilon = epsilonFunc(episode + 1)
         while(not env.isTerminalStateNum(futureStateNum)):
             currentStateNum = futureStateNum
             # poisoned to death?
@@ -1080,9 +1115,31 @@ def sarsa(env, gamma, epsilon, learningRateFunc, episodes = 50000):
                 Q[currentStateNum, currentState_actionNum] = old_qValue + learningRateFunc(stateVisits[currentStateNum, currentState_actionNum]) * temporal_difference
                 current_loopCount += 1
 
+# # temp qlearning
+#                 # get next move
+#                 currentState_actionNum = nextMoveEpsSoft(currentStateNum)
+#                 # add visit count
+#                 stateVisits[currentStateNum, currentState_actionNum] += 1
+                            
+#                 # get next state number
+#                 futureStateDict = env.getNextState(currentStateNum, currentState_actionNum)
+#                 futureStateNum = futureStateDict["next_stateNum"]
+#                 # get the reward of the currentState_actionNum
+#                 move_reward = futureStateDict["reward_instantaneous"]
+#                 # get the old q value
+#                 old_qValue = Q[currentStateNum, currentState_actionNum]
+#                 # calculate the difference
+#                 temporal_difference = move_reward + gamma * np.max(Q[futureStateNum,:]) - old_qValue
+#                 # update the q value
+#                 Q[currentStateNum, currentState_actionNum] = old_qValue + learningRateFunc(stateVisits[currentStateNum, currentState_actionNum]) * temporal_difference
+#                 current_loopCount += 1
+
         iterationCounter[episode] = current_loopCount
         V_over_episodes[:, episode] = np.max(Q,1)
-        # print("episode {0} finished".format(episode))
+        # print("epi    ode {0} finished".format(episode))
+    # write the Q function to file
+    if (saveQFunc):
+        np.savetxt(QFuncFileNameWrite, Q, fmt="%10.6f")
     # compute the Value Function
     V = np.max(Q, 1)
     # compute the policy

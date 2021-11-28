@@ -34,20 +34,28 @@ alpha = 2./3
 episodes = 50000
 
 suffix = "_inst_reward_"
-# nextMovePolicy = "_fixed"
-nextMovePolicy = "fixed"
+nextMovePolicy = "greedy"
 
-poisoned = "poisoned"
+poisoned = "poisoned" + "_newStateVisits"
 
 suffix += nextMovePolicy + "_" + poisoned
-V, policy, iteration_counter, V_over_episodes = qLearning(env, gamma, epsilon, lambda x : 1 / np.float_power(x, alpha), episodes,nextMovePolicy)
+# save q func, init from scratch, epsilon = const, do not clear visit count to zero after each episode
+V, policy, iteration_counter, V_over_episodes = qLearning(env, gamma, lambda x: epsilon, lambda x : 1 / np.float_power(x, alpha), episodes,nextMovePolicy,saveQFunc=True, initQFunc="FromScratch", visitCountClearEachEpisode=False)
+
+# # save q func, init from scratch, epsilon = const
+# V, policy, iteration_counter, V_over_episodes = qLearning(env, gamma, lambda x: epsilon, lambda x : 1 / np.float_power(x, alpha), episodes,nextMovePolicy,saveQFunc=True, initQFunc="FromScratch")
+
+
+# # init from previou
+# V, policy, iteration_counter, V_over_episodes = qLearning(env, gamma, lambda x: epsilon, lambda x : 1 / np.float_power(x, alpha), episodes,nextMovePolicy,saveQFunc=True, initQFunc="FromPrevious")
+
 method = 'QLearn';
 start  = (0,0,6,5,0);
 path = env.simulate(start, policy, method, prob = gamma);    
 # print(path)
 animate_solution(maze, path, env,saveFigName = "mazeQLearn" + suffix + ".gif")    
-np.savetxt("qLearn_V" + suffix + ".txt", V, fmt = "%5.4f")
-np.savetxt("qLearn_policy" + suffix + ".txt", policy, fmt = "%5d")
+# np.savetxt("qLearn_V" + suffix + ".txt", V, fmt = "%5.4f")
+# np.savetxt("qLearn_policy" + suffix + ".txt", policy, fmt = "%5d")
 
 # plot the value function of the first state over time
 startNum = env.map[start]

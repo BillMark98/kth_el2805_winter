@@ -40,3 +40,6 @@ animate_solution(maze, path, env,saveFigName = "mazeValIter_keyPicking_mac.gif")
 np.savetxt("valueIter_V_mac.txt", V, fmt = "%5.4f")
 np.savetxt("valIter_policy_mac.txt", policy, fmt = "%5d")
 
+
+
+# q-learning

@@ -27,12 +27,13 @@ gamma = 1 - 1/life_expectancy
 env = Maze(maze,keyPicking=True,greedyGoal=True, probability_to_survive=gamma)    
 
 
-epsilon = 0.1
+epsilon = 0.01
 
 alpha = 2./3
 
 episodes = 50000
 
+# print("start index : {0}".format(env.map[(0,0,6,5,0)]))
 suffix = "_inst_reward_"
 # nextMovePolicy = "_fixed"
 # nextMovePolicy = "fixed"
@@ -41,12 +42,26 @@ poisoned = "poisoned"
 
 suffix += poisoned
 
-V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, epsilon, lambda x : 1 / np.float_power(x, alpha), episodes)
+# # # previous result Q init
+# V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : epsilon, lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromPrevious")
+
+# # # previous result Q init, from qlearning, converging!!!!
+# V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : epsilon, lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromPrevious", QFuncFileNameRead="qFunc_qLearn.txt")
+
+# # from scratch init
+# V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : epsilon, lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromScratch")
+
+# from scratch init, decreasing epsilon
+delta = 0.7
+V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : 1./np.float_power(x, delta), lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromScratch")
+
+# V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, epsilon, lambda x : 0.8, episodes)
+
 method = 'SARSA';
 start  = (0,0,6,5,0);
-# path = env.simulate(start, policy, method, prob = gamma);    
+path = env.simulate(start, policy, method, prob = gamma);    
 # print(path)
-# animate_solution(maze, path, env,saveFigName = "mazeSARSA_temp.gif")    
+animate_solution(maze, path, env,saveFigName = "mazeSARSA_temp.gif")    
 np.savetxt("sarsa_V_temp" + suffix + ".txt", V, fmt = "%5.4f")
 np.savetxt("sarsa_policy_temp" + suffix + ".txt", policy, fmt = "%5d")
 
