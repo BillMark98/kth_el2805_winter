@@ -2,7 +2,7 @@
 # Panwei Hu t-no. 980709T518
 #  
 import os
-from minotaurMaze import Maze, qLearning, animate_solution, change2FileDir
+from minotaurMaze import Maze, qLearning, animate_solution, change2FileDir, printText
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -22,7 +22,7 @@ maze = np.array([
     [0, 0, 0, 0, 1, 2, 0, 0]
 ])    
 
-env = Maze(maze,keyPicking=True, probability_to_survive=gamma)    
+env = Maze(maze,keyPicking=True, probability_to_survive=gamma, scaleReward=True)    
 
 ## simple simulation
 # simulate qLearning
@@ -33,30 +33,35 @@ alpha = 2./3
 
 episodes = 50000
 
-suffix = "_inst_reward_"
+suffix = "_inst_reward_newMinoMove"
 nextMovePolicy = "greedy"
 
-poisoned = "poisoned" + "_newStateVisits"
+poisoned = "poisoned" # + "_newStateVisits"
 
 suffix += nextMovePolicy + "_" + poisoned
 # save q func, init from scratch, epsilon = const, do not clear visit count to zero after each episode
-V, policy, iteration_counter, V_over_episodes = qLearning(env, gamma, lambda x: epsilon, lambda x : 1 / np.float_power(x, alpha), episodes,nextMovePolicy,saveQFunc=True, initQFunc="FromScratch", visitCountClearEachEpisode=False)
-
+# V, policy, iteration_counter, V_over_episodes = qLearning(env, gamma, lambda x: epsilon, lambda x : 1 / np.float_power(x, alpha), episodes,nextMovePolicy,saveQFunc=True, initQFunc="FromScratch", visitCountClearEachEpisode=True)
+# suffix += "_clearVisit_scratch_scaleReward"
 # # save q func, init from scratch, epsilon = const
 # V, policy, iteration_counter, V_over_episodes = qLearning(env, gamma, lambda x: epsilon, lambda x : 1 / np.float_power(x, alpha), episodes,nextMovePolicy,saveQFunc=True, initQFunc="FromScratch")
 
 
 # # init from previou
-# V, policy, iteration_counter, V_over_episodes = qLearning(env, gamma, lambda x: epsilon, lambda x : 1 / np.float_power(x, alpha), episodes,nextMovePolicy,saveQFunc=True, initQFunc="FromPrevious")
+# V, policy, iteration_counter, V_over_episodes = qLearning(env, gamma, lambda x: epsilon, lambda x : 1 / np.float_power(x, alpha), episodes,nextMovePolicy,saveQFunc=True, initQFunc="FromPrevious",visitCountClearEachEpisode=True)
+# suffix += "_readPrev_clearVisit"
+
+# # init all zero
+# V, policy, iteration_counter, V_over_episodes = qLearning(env, gamma, lambda x: epsilon, lambda x : 1 / np.float_power(x, alpha), episodes,nextMovePolicy,saveQFunc=True, initQFunc="AllZero",visitCountClearEachEpisode=True)
+# suffix += "_allZero"
 
 method = 'QLearn';
 start  = (0,0,6,5,0);
-path = env.simulate(start, policy, method, prob = gamma);    
+# path = env.simulate(start, policy, method, prob = gamma);    
 # print(path)
-animate_solution(maze, path, env,saveFigName = "mazeQLearn" + suffix + ".gif")    
+# animate_solution(maze, path, env,saveFigName = "mazeQLearn" + suffix + ".gif")    
 # np.savetxt("qLearn_V" + suffix + ".txt", V, fmt = "%5.4f")
-# np.savetxt("qLearn_policy" + suffix + ".txt", policy, fmt = "%5d")
-
+np.savetxt("qLearn_policy" + suffix + ".txt", policy, fmt = "%5d")
+printText("policy saved at " + "qLearn_policy" + suffix + ".txt")
 # plot the value function of the first state over time
 startNum = env.map[start]
 plt.figure()
@@ -64,7 +69,8 @@ plt.plot(list(range(episodes)), V_over_episodes[startNum,:])
 plt.xlabel("episodes")
 plt.ylabel("value function")
 plt.title("value function over episode")
-plt.savefig("v_over_eps_qLearn" + suffix + ".png")
+plt.savefig("v_qLearn" + suffix + ".png")
+printText("v_qLearn" + suffix + ".png")
 plt.show()
 
 # # 2)
@@ -79,12 +85,13 @@ plt.show()
 
 # episodes = 50000
 
+
 # v_start_episodes = np.zeros((len(epsilons), episodes))
 
 # index = 0
 # for epsilon in epsilons:
     
-#     V, policy, iteration_counter, V_over_episodes = qLearning(env, gamma, epsilon, lambda x : 1 / np.float_power(x, alpha), episodes)
+#     V, policy, iteration_counter, V_over_episodes = qLearning(env, gamma, lambda x : epsilon, lambda x : 1 / np.float_power(x, alpha), episodes)
 #     method = 'QLearn';
 #     start  = (0,0,6,5,0);
 #     path = env.simulate(start, policy, method, prob = gamma);    
@@ -101,17 +108,26 @@ plt.show()
 #     index += 1
 # # plot the value function of the first state over time
 
+
+# suffix = "_inst_reward_"
+# nextMovePolicy = "greedy"
+
+# poisoned = "poisoned" + "_newStateVisits"
+# suffix += nextMovePolicy + "_" + poisoned + "epsChange"
 # plt.figure()
 # for index in range(len(epsilons)):
 #     plt.plot(list(range(episodes)), v_start_episodes[index,:], label = labels[index])
 # plt.legend()
 # plt.xlabel("episodes")
 # plt.ylabel("value function")
-# plt.title("value function over episode")
-# plt.savefig("v_over_eps_qLearn.png")
+# plt.title("value function over episode, varying epsilon")
+# plt.savefig("v_over_eps_qLearn" + suffix + ".png")
+# print("*********+")
+# print("name of fig:")
+# print("v_over_eps_qLearn" + suffix + ".png")
 # plt.show()
 
-# 3)
+# # 3)
 
 # alphas = [0.6, 0.9]
 # labels = [str(alpha) for alpha in alphas]
@@ -127,15 +143,15 @@ plt.show()
 # index = 0
 # for alpha in alphas:
     
-#     V, policy, iteration_counter, V_over_episodes = qLearning(env, gamma, epsilon, lambda x : 1 / np.float_power(x, alpha), episodes)
+#     V, policy, iteration_counter, V_over_episodes = qLearning(env, gamma, lambda x : epsilon, lambda x : 1 / np.float_power(x, alpha), episodes)
 #     method = 'QLearn';
 #     start  = (0,0,6,5,0);
-#     path = env.simulate(start, policy, method, prob = gamma);    
+#     # path = env.simulate(start, policy, method, prob = gamma);    
 #     # print(path)
 #     # build suffix
 #     suffix = "alpha_{:.3f}".format(alpha)
-#     suffix = suffix.replace(".", "_")
-#     animate_solution(maze, path, env,saveFigName = "mazeQLearn" + suffix + ".gif")    
+#     # suffix = suffix.replace(".", "_")
+#     # animate_solution(maze, path, env,saveFigName = "mazeQLearn" + suffix + ".gif")    
 
 #     np.savetxt("qLearn_V" + suffix + ".txt", V, fmt = "%5.4f")
 #     np.savetxt("qLearn_policy" + suffix + ".txt", policy, fmt = "%5d")
@@ -143,6 +159,13 @@ plt.show()
 #     v_start_episodes[index, :] = V_over_episodes[startNum,:]
 #     index += 1
 # # plot the value function of the first state over time
+
+
+# suffix = "_inst_reward_"
+# nextMovePolicy = "greedy"
+
+# poisoned = "poisoned" + "_newStateVisits"
+# suffix += nextMovePolicy + "_" + poisoned + "epsChange"
 
 # plt.figure()
 # for index in range(len(alphas)):
@@ -152,4 +175,7 @@ plt.show()
 # plt.ylabel("value function")
 # plt.title("value function over episode, varying alpha")
 # plt.savefig("v_over_eps_qLearn_alpha.png")
+# print("*********+")
+# print("name of fig:")
+# print("v_over_eps_qLearn_alpha" + suffix + ".png")
 # plt.show()

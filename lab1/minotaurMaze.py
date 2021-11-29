@@ -17,7 +17,11 @@ def change2FileDir():
     # change to the file position
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-
+def printText(Text):
+    print("***********************")
+    print(Text)
+    print("***********************")
+    print()
 # Implemented methods
 methods = ['DynProg', 'ValIter', 'QLearn', 'SARSA'];
 
@@ -32,6 +36,9 @@ LIGHT_BLUE   = '#ADD8E6';
 BLUE_VIOLET  = '#8A2BE2';
 
 col_map = {0: WHITE, 1: BLACK, 2: LIGHT_GREEN, -6: LIGHT_RED, -1: LIGHT_RED, 3: LIGHT_PURPLE, 4: LIGHT_BLUE};
+
+rewardScheme = "NewReward"
+# oldReward
 
 class Maze:
 
@@ -53,11 +60,16 @@ class Maze:
 
 
     # Reward values
-    STEP_REWARD = -1
-    GOAL_REWARD = 0
-    IMPOSSIBLE_REWARD = -100
-    EATEN_REWARD = -1000
-
+    if (rewardScheme == "NewReward"):
+        STEP_REWARD = -1
+        GOAL_REWARD = 0
+        IMPOSSIBLE_REWARD = -7
+        EATEN_REWARD = -10
+    else:
+        STEP_REWARD = -1
+        GOAL_REWARD = 0
+        IMPOSSIBLE_REWARD = -100
+        EATEN_REWARD = -1000        
     # special state enumeration
     STATE_EXIT = 0
     STATE_EATEN = 1
@@ -69,7 +81,7 @@ class Maze:
     # for the random move of the minotaur with key picking
     PROB_TOWARD_AGENT = 0.35
 
-    def __init__(self, maze, weights=None, random_rewards=False, keyPicking=False, greedyGoal = False, probability_to_survive = 1):
+    def __init__(self, maze, weights=None, random_rewards=False, keyPicking=False, greedyGoal = False, probability_to_survive = 1, scaleReward = False):
         """ Constructor of the environment Maze.
 
         maze convention:
@@ -87,9 +99,13 @@ class Maze:
         so this will force the agent to move to exit as long it is near the exit.
 
         probability_to_survive: a variable that indicates the probability the agent will survive the next move due to poisoning
+        
+        scaleReward : boolean
+            used to specify if reward will be scaled to be bounded <= 1 (abs) default False
         """
         self.maze                     = maze;
         self.exit_pos                 = None
+        self.scaleReward              = scaleReward
         self.probability_to_survive   = probability_to_survive
         self.keyPicking               = keyPicking;
         self.greedyGoal               = greedyGoal
@@ -422,6 +438,8 @@ class Maze:
             # the usual step
             reward_instantaneous = self.STEP_REWARD
         
+        if (self.scaleReward):
+            reward_instantaneous = reward_instantaneous / abs(self.EATEN_REWARD)
         stateDict["next_stateNum"] = next_stateNum
         stateDict["next_statePos"] = next_statePos
         stateDict["reward_instantaneous"] = reward_instantaneous
@@ -532,10 +550,11 @@ class Maze:
             next_stateNum = [self.STATE_EXIT]
 
             if (self.greedyGoal):
-                if (action != self.STAY):
-                    action_rewards = [self.STEP_REWARD]
-                else:
-                    action_rewards = [self.GOAL_REWARD]
+                # if (action != self.STAY):
+                #     action_rewards = [self.STEP_REWARD]
+                # else:
+                #     action_rewards = [self.GOAL_REWARD]
+                action_rewards = [self.GOAL_REWARD]
             else:
                 action_rewards = [self.STEP_REWARD]
             state_transitionProb[self.STATE_EXIT] = 1
@@ -543,9 +562,16 @@ class Maze:
             # eaten stateNum
             next_statePos = [self.STATE_EATEN]
             next_stateNum = [self.STATE_EATEN]
-            action_rewards = [self.EATEN_REWARD]
+            # action_rewards = [self.EATEN_REWARD]
+            if (self.greedyGoal):
+                action_rewards = [0]
+            else:
+                action_rewards = [self.EATEN_REWARD]
             state_transitionProb[self.STATE_EXIT] = 1
-
+        
+        if (self.scaleReward):
+            action_rewards = np.array(action_rewards)
+            action_rewards = action_rewards / abs(self.EATEN_REWARD)
         
         moveResult = dict()
         moveResult['next_statePos'] = next_statePos
@@ -584,7 +610,7 @@ class Maze:
                     moveResult = self.__moveResult(s,a);
                     action_rewards = moveResult['action_rewards']
                     # calculate the average of rewards
-                    rewards[s,a] = sum(action_rewards) / len(action_rewards)
+                    rewards[s,a] = np.sum(action_rewards) / len(action_rewards)
 
         # If the weights are described by a weight matrix
         else:
@@ -596,6 +622,9 @@ class Maze:
                      # Simply put the reward as the weights o the next stateNum.
                      rewards[s,a] = weights[i][j];
 
+        if (self.scaleReward):
+            # the largest (abs) reward is eaten reward, devide by factor to make sure all rewards bounded by 1
+            rewards = rewards / abs(self.EATEN_REWARD)
         return rewards;
 
     def getNextState(self, currentStateNum, currentState_actionNum):
@@ -879,6 +908,11 @@ def qLearning(env, gamma, epsilonFunc, learningRateFunc, episodes = 50000, nextM
             "fixed" : will use the original Q-value
             "random" : completely random
         visitCountClearEachEpisode : boolean indicate whether to clear the visit count to zero after each episode
+
+        initQFunc: used to tell which method to use 
+            "FromScratch" : initialize Q function using the reward function
+            "FromPrevious" : initialize Q function from previous result, read from the QFuncFileNameRead
+            "AllZero": all entries 0
     ---
     Return
     ----
@@ -939,6 +973,8 @@ def qLearning(env, gamma, epsilonFunc, learningRateFunc, episodes = 50000, nextM
     elif (initQFunc == "FromPrevious"):
         Q = np.loadtxt(QFuncFileNameRead)
         Q_orig = np.copy(Q)
+    elif (initQFunc == "AllZero"):
+        pass
     else:
         raise Exception("Unknown q function initialisation method")    
     # begin episodes

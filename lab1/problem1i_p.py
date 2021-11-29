@@ -2,7 +2,7 @@
 # Panwei Hu t-no. 980709T518
 #  
 import os
-from minotaurMaze import Maze, sarsa, animate_solution, change2FileDir
+from minotaurMaze import Maze, sarsa, animate_solution, change2FileDir, printText
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -24,12 +24,14 @@ maze = np.array([
 life_expectancy = 50
 gamma = 1 - 1/life_expectancy
 
-env = Maze(maze,keyPicking=True,greedyGoal=True, probability_to_survive=gamma)    
+# env = Maze(maze,keyPicking=True,greedyGoal=True, probability_to_survive=gamma, scaleReward=True)    
+env = Maze(maze,keyPicking=True,greedyGoal=True, probability_to_survive=gamma, scaleReward=False)    
+
 
 
 epsilon = 0.01
 
-alpha = 2./3
+alpha = 0.501
 
 episodes = 50000
 
@@ -42,28 +44,44 @@ poisoned = "poisoned"
 
 suffix += poisoned
 
-# # # previous result Q init
-# V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : epsilon, lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromPrevious")
+# # previous result Q init, clear count
+# V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : epsilon, lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromPrevious", visitCountClearEachEpisode=True)
+# suffix += "_NoScaleReward_previous_newReward4"
 
 # # # previous result Q init, from qlearning, converging!!!!
 # V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : epsilon, lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromPrevious", QFuncFileNameRead="qFunc_qLearn.txt")
 
-# # from scratch init
-# V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : epsilon, lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromScratch")
+# from scratch init
+V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : epsilon, lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromScratch",visitCountClearEachEpisode=True)
+suffix += "_NoScaleReward_newReward4_origMino"
 
-# from scratch init, decreasing epsilon
-delta = 0.7
-V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : 1./np.float_power(x, delta), lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromScratch")
+# const learning rate
+# V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : epsilon, lambda x : 0.8, episodes, initQFunc="FromScratch",visitCountClearEachEpisode=True)
+
+
+# suffix += "_NoScaleReward_constLearn"
+# suffix += "_scaleReward"
+
+# # from scratch init, decreasing epsilon
+# delta = 0.7
+# V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : 1./np.float_power(x, delta), lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromScratch")
+# suffix += "_NoScaleReward_scratch_newReward3_decElon"
+
 
 # V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, epsilon, lambda x : 0.8, episodes)
 
 method = 'SARSA';
 start  = (0,0,6,5,0);
-path = env.simulate(start, policy, method, prob = gamma);    
-# print(path)
-animate_solution(maze, path, env,saveFigName = "mazeSARSA_temp.gif")    
+# policy = np.loadtxt("sarsa_policy_temp_inst_reward_poisoned_NoScaleReward_previous_newReward.txt")
+# sarsa_2ndRnd_noscale_newReward.txt
+# path = env.simulate(start, policy, method, prob = gamma);    
+# # print(path)
+# animate_solution(maze, path, env,saveFigName = "mazeSARSA_temp" + suffix + ".gif")    
+printText("saved maze : " + "mazeSARSA_temp" + suffix + ".gif")
 np.savetxt("sarsa_V_temp" + suffix + ".txt", V, fmt = "%5.4f")
+printText("saved value function : " + "sarsa_V_temp" + suffix + ".txt")
 np.savetxt("sarsa_policy_temp" + suffix + ".txt", policy, fmt = "%5d")
+printText("saved policy : " + "sarsa_policy_temp" + suffix + ".txt")
 
 plt.figure()
 
@@ -74,4 +92,6 @@ plt.xlabel("episodes")
 plt.ylabel("value function")
 plt.title("value function over episode")
 plt.savefig("v_over_eps_sarsa_temp" + suffix + ".png")
+printText("saved value over epsisodes: " + "v_over_eps_sarsa_temp" + suffix + ".png")
+# from value Iter: -194.2105059750552
 plt.show()
