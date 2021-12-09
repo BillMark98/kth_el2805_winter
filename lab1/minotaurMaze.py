@@ -37,8 +37,9 @@ BLUE_VIOLET  = '#8A2BE2';
 
 col_map = {0: WHITE, 1: BLACK, 2: LIGHT_GREEN, -6: LIGHT_RED, -1: LIGHT_RED, 3: LIGHT_PURPLE, 4: LIGHT_BLUE};
 
-rewardScheme = "NewReward"
+# rewardScheme = "NewReward"
 # oldReward
+rewardScheme = "oldReward"
 
 class Maze:
 
@@ -235,7 +236,7 @@ class Maze:
                                     states[s] = (i,j,mx,my);
                                     map[(i,j, mx,my)] = s;
                                     s += 1;
-                    if (self.map[i,j] == self.EXIT_POSITION_MAZE_VALUE):
+                    if (self.maze[i,j] == self.EXIT_POSITION_MAZE_VALUE):
                             self.exit_pos = (i,j)
             return states, map
         else:
@@ -312,7 +313,11 @@ class Maze:
             ---
             return
             ---
-            return a list of possible states
+            return a dict
+            {
+                "possibleNextStates" : [(1,2), (1,3)..],
+                "probability_vec" : [1/3, 1/3,..]
+            } 
         """
         row = minotaurPos[0]
         col = minotaurPos[1]
@@ -327,27 +332,55 @@ class Maze:
             possibleActions.discard(self.MOVE_LEFT)
         elif col == self.maze.shape[1] - 1 :
             possibleActions.discard(self.MOVE_RIGHT)
+        # change set to a list
+        possibleActions = list(possibleActions)
+        probability_vec = np.ones((len(possibleActions),))
+        probability_vec /= len(possibleActions)
 
         if (self.keyPicking):
             # decide whether move toward agent
-            random_number = np.random.rand()
-            if random_number < self.PROB_TOWARD_AGENT :
-                # agent not at the right of the minotaur, so delete move right
-                if (agentPos[1] <= col) :
-                    possibleActions.discard(self.MOVE_RIGHT)
+            probability_aux = np.ones(np.shape(probability_vec))
+            candidates = len(probability_aux) # possible actions towards agent
+            if (agentPos[1] <= col) and (self.MOVE_RIGHT in possibleActions):
+                probability_aux[possibleActions.index(self.MOVE_RIGHT)] = 0
+                candidates -= 1
 
-                # agent not at left, so delete MOVE_LEFT
-                # use a different if condition in case agentPos at same col as minotaur
-                if (agentPos[1] >= col):
-                    possibleActions.discard(self.MOVE_LEFT)
+            # agent not at left, so delete MOVE_LEFT
+            # use a different if condition in case agentPos at same col as minotaur
+            if (agentPos[1] >= col) and (self.MOVE_LEFT in possibleActions):
+                probability_aux[possibleActions.index(self.MOVE_LEFT)] = 0
+                candidates -= 1
+            
+            # agent not below of minotaur, so delete move down
+            if (agentPos[0] <= row) and (self.MOVE_DOWN in possibleActions):
+                probability_aux[possibleActions.index(self.MOVE_DOWN)] = 0
+                candidates -= 1
+            
+            # agent not above, so delete MOVE_UP
+            if (agentPos[0] >= row) and (self.MOVE_UP in possibleActions):
+                probability_aux[possibleActions.index(self.MOVE_UP)] = 0
+                candidates -= 1
+            probability_aux = probability_aux * self.PROB_TOWARD_AGENT * 1 / candidates
+            probability_vec = probability_vec * (1 - self.PROB_TOWARD_AGENT)  + probability_aux
+            # # decide whether move toward agent
+            # random_number = np.random.rand()
+            # if random_number < self.PROB_TOWARD_AGENT :
+            #     # agent not at the right of the minotaur, so delete move right
+            #     if (agentPos[1] <= col) :
+            #         possibleActions.discard(self.MOVE_RIGHT)
+
+            #     # agent not at left, so delete MOVE_LEFT
+            #     # use a different if condition in case agentPos at same col as minotaur
+            #     if (agentPos[1] >= col):
+            #         possibleActions.discard(self.MOVE_LEFT)
                 
-                # agent not below of minotaur, so delete move down
-                if (agentPos[0] <= row):
-                    possibleActions.discard(self.MOVE_DOWN)
+            #     # agent not below of minotaur, so delete move down
+            #     if (agentPos[0] <= row):
+            #         possibleActions.discard(self.MOVE_DOWN)
                 
-                # agent not above, so delete MOVE_UP
-                if (agentPos[0] >= row):
-                    possibleActions.discard(self.MOVE_UP)
+            #     # agent not above, so delete MOVE_UP
+            #     if (agentPos[0] >= row):
+            #         possibleActions.discard(self.MOVE_UP)
         if (len(possibleActions) == 0):
             print("__randomMove error!")
             print("minotaur position ({0},{1})".format(minotaurPos[0], minotaurPos[1]))
@@ -357,7 +390,11 @@ class Maze:
         actionMoves = [self.actions[actionName] for actionName in possibleActions]
 
         possibleNextStates = [self.__coordinateAddition(minotaurPos, action) for action in actionMoves]
-        return possibleNextStates
+        randomMoveDict = dict()
+
+        randomMoveDict["possibleNextStates"] = possibleNextStates
+        randomMoveDict["probability_vec"] = probability_vec
+        return randomMoveDict
 
     def __move(self, stateNum, action, statePos):
         """ Makes a step in the maze, given a current position and an action.
@@ -390,12 +427,17 @@ class Maze:
         stateDict = dict()
         # get the possible minotaur position
         if (self.keyPicking):
-            minotaurPositions = self.__randomMove((currentState[2], currentState[3]), (currentState[0], currentState[1]))
+            moveDict = self.__randomMove((currentState[2], currentState[3]), (currentState[0], currentState[1]))
+            minotaurPositions = moveDict["possibleNextStates"]
             keyPicked = currentState[4]
         else:
-            minotaurPositions = self.__randomMove((currentState[2], currentState[3]))
+            moveDict = self.__randomMove((currentState[2], currentState[3]))
+            minotaurPositions = moveDict["possibleNextStates"]
+
         # randomly pick one minotaurPositions
-        minotaurPos = random.sample(minotaurPositions, 1)[0]
+        # could not directly sample a list of tuples, so use index instead
+        minotaurPos_index = np.random.choice(list(range(len(minotaurPositions))), 1, p = moveDict["probability_vec"])[0]
+        minotaurPos = minotaurPositions[minotaurPos_index]
         
         # if is Eaten or Exit remain in the stateNum, regardless of the action
         if (stateNum == self.STATE_EATEN)  or (stateNum == self.STATE_EXIT):
@@ -480,12 +522,16 @@ class Maze:
             # hitting_maze_walls =  (row == -1) or (row == self.maze.shape[0]) or \
             #                     (col == -1) or (col == self.maze.shape[1]) or \
             #                     (self.maze[row,col] == 1);
-
+            moveDict = None
             # get the possible minotaur position
             if (self.keyPicking):
-                minotaurPositions = self.__randomMove((currentState[2], currentState[3]), (currentState[0], currentState[1]))
+                moveDict = self.__randomMove((currentState[2], currentState[3]), (currentState[0], currentState[1]))
+                minotaurPositions = moveDict["possibleNextStates"]
+
             else:
-                minotaurPositions = self.__randomMove((currentState[2], currentState[3]))            
+                moveDict = self.__randomMove((currentState[2], currentState[3]))            
+                minotaurPositions = moveDict["possibleNextStates"]
+            probability_vec = moveDict["probability_vec"]
             # Based on the impossiblity check return the next state.
             if hitting_maze_walls:
                 agent_pos = (currentState[0], currentState[1])
@@ -517,9 +563,9 @@ class Maze:
                     next_stateNum[index] = self.STATE_EATEN
                     action_rewards[index] = self.EATEN_REWARD
                     if (self.STATE_EATEN not in state_transitionProb):
-                        state_transitionProb[self.STATE_EATEN] = 1
+                        state_transitionProb[self.STATE_EATEN] = probability_vec[index]
                     else:
-                        state_transitionProb[self.STATE_EATEN] += 1
+                        state_transitionProb[self.STATE_EATEN] += probability_vec[index]
                 # check if at exit
                 elif (self.isExit(next_statePos[index])):
                     next_statePos[index] = self.STATE_EXIT
@@ -531,19 +577,19 @@ class Maze:
                     action_rewards[index] = self.GOAL_REWARD
 
                     if (self.STATE_EXIT not in state_transitionProb):
-                        state_transitionProb[self.STATE_EXIT] = 1
+                        state_transitionProb[self.STATE_EXIT] = probability_vec[index]
                     else:
-                        state_transitionProb[self.STATE_EXIT] += 1
+                        state_transitionProb[self.STATE_EXIT] += probability_vec[index]
                 else:
                     next_stateNum[index] = self.map[next_statePos[index]]
                     if (next_stateNum[index] in state_transitionProb):
                         # an error occurred, because this state should be unique
                         raise Exception("normal state visted more than once!")
-                    state_transitionProb[next_stateNum[index]] = 1
-            # update the prob
-            for key in state_transitionProb.keys():
-                # calculate the probability
-                state_transitionProb[key] /= len(next_statePos)
+                    state_transitionProb[next_stateNum[index]] = probability_vec[index]
+            # # update the prob
+            # for key in state_transitionProb.keys():
+            #     # calculate the probability
+            #     state_transitionProb[key] /= len(next_statePos)
             
         elif (stateNum == self.STATE_EXIT):
             next_statePos = [self.STATE_EXIT]
@@ -1401,7 +1447,7 @@ if __name__ == "__main__" :
         [0, 0, 0, 0, 1, 2, 0, 0]
     ])    
 
-    env = Maze(maze)
+    env = Maze(maze, keyPicking=False)
 
     # # Finite horizon
     # horizon = 20

@@ -31,7 +31,7 @@ env = Maze(maze,keyPicking=True,greedyGoal=True, probability_to_survive=gamma, s
 
 epsilon = 0.01
 
-alpha = 0.501
+alpha = 2./3
 
 episodes = 50000
 
@@ -46,14 +46,17 @@ suffix += poisoned
 
 # # previous result Q init, clear count
 # V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : epsilon, lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromPrevious", visitCountClearEachEpisode=True)
-# suffix += "_NoScaleReward_previous_newReward4"
+# # suffix += "_NoScaleReward_previous_newReward4"
+# suffix += "_NoScaleReward_oldReward_origMino_previous_correctTrans"
 
 # # # previous result Q init, from qlearning, converging!!!!
 # V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : epsilon, lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromPrevious", QFuncFileNameRead="qFunc_qLearn.txt")
 
 # from scratch init
 V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : epsilon, lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromScratch",visitCountClearEachEpisode=True)
-suffix += "_NoScaleReward_newReward4_origMino"
+# suffix += "_NoScaleReward_oldReward_origMino_correctTrans"
+suffix += "_NoScaleReward_newReward_origMino_correctTrans"
+
 
 # const learning rate
 # V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : epsilon, lambda x : 0.8, episodes, initQFunc="FromScratch",visitCountClearEachEpisode=True)
@@ -70,28 +73,73 @@ suffix += "_NoScaleReward_newReward4_origMino"
 
 # V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, epsilon, lambda x : 0.8, episodes)
 
-method = 'SARSA';
-start  = (0,0,6,5,0);
-# policy = np.loadtxt("sarsa_policy_temp_inst_reward_poisoned_NoScaleReward_previous_newReward.txt")
-# sarsa_2ndRnd_noscale_newReward.txt
+# method = 'SARSA';
+# start  = (0,0,6,5,0);
+# # policy = np.loadtxt("sarsa_policy_temp_inst_reward_poisoned_NoScaleReward_previous_newReward.txt")
+# # sarsa_2ndRnd_noscale_newReward.txt
 # path = env.simulate(start, policy, method, prob = gamma);    
 # # print(path)
 # animate_solution(maze, path, env,saveFigName = "mazeSARSA_temp" + suffix + ".gif")    
-printText("saved maze : " + "mazeSARSA_temp" + suffix + ".gif")
-np.savetxt("sarsa_V_temp" + suffix + ".txt", V, fmt = "%5.4f")
-printText("saved value function : " + "sarsa_V_temp" + suffix + ".txt")
-np.savetxt("sarsa_policy_temp" + suffix + ".txt", policy, fmt = "%5d")
-printText("saved policy : " + "sarsa_policy_temp" + suffix + ".txt")
+# printText("saved maze : " + "mazeSARSA_temp" + suffix + ".gif")
+# np.savetxt("sarsa_V_temp" + suffix + ".txt", V, fmt = "%5.4f")
+# printText("saved value function : " + "sarsa_V_temp" + suffix + ".txt")
+# np.savetxt("sarsa_policy_temp" + suffix + ".txt", policy, fmt = "%5d")
+# printText("saved policy : " + "sarsa_policy_temp" + suffix + ".txt")
 
+# plt.figure()
+
+# # plot the value function of the first state over time
+# startNum = env.map[start]
+# plt.plot(list(range(episodes)), V_over_episodes[startNum,:])
+# plt.xlabel("episodes")
+# plt.ylabel("value function")
+# plt.title("value function over episode")
+# plt.savefig("v_over_eps_sarsa_temp" + suffix + ".png")
+# printText("saved value over epsisodes: " + "v_over_eps_sarsa_temp" + suffix + ".png")
+# # from value Iter: -48...
+# plt.show()
+
+
+# # 2)
+
+epsilons = [0.1, 0.2]
+labels = [str(epsilon) for epsilon in epsilons]
+# simulate qLearning
+life_expectancy = 50
+gamma = 1 - 1/life_expectancy
+
+alpha = 2./3
+
+episodes = 50000
+
+v_start_episodes = np.zeros((len(epsilons), episodes))
+
+index = 0
+for epsilon in epsilons:
+
+    V, policy, iteration_counter, V_over_episodes = sarsa(env, gamma, lambda x : 1./np.float_power(x, alpha), lambda x : 1 / np.float_power(x, alpha), episodes, initQFunc="FromScratch")
+    method = 'SARSA';
+    start  = (0,0,6,5,0);
+    path = env.simulate(start, policy, method, prob = gamma);
+    # print(path)
+    # build suffix
+    suffix = "{:.3f}".format(epsilon)
+    suffix = suffix.replace(".", "_")
+    animate_solution(maze, path, env,saveFigName = "mazesarsa" + suffix + ".gif")
+
+    np.savetxt("sarsa_V" + suffix + ".txt", V, fmt = "%5.4f")
+    np.savetxt("sarsa_policy" + suffix + ".txt", policy, fmt = "%5d")
+    startNum = env.map[start]
+    v_start_episodes[index, :] = V_over_episodes[startNum,:]
+    index += 1
+# # plot the value function of the first state over time
 plt.figure()
-
-# plot the value function of the first state over time
-startNum = env.map[start]
-plt.plot(list(range(episodes)), V_over_episodes[startNum,:])
+for index in range(len(epsilons)):
+    plt.plot(list(range(episodes)), v_start_episodes[index,:], label = labels[index])
+plt.legend()
 plt.xlabel("episodes")
 plt.ylabel("value function")
 plt.title("value function over episode")
-plt.savefig("v_over_eps_sarsa_temp" + suffix + ".png")
-printText("saved value over epsisodes: " + "v_over_eps_sarsa_temp" + suffix + ".png")
-# from value Iter: -194.2105059750552
+plt.savefig("v_over_eps_sarsa_diffElon.png")
+
 plt.show()
