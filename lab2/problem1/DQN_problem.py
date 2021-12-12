@@ -16,12 +16,13 @@
 # Load packages
 import numpy as np
 import gym
+from numpy.lib.function_base import gradient
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 from tqdm import trange
 from DQN_agent import RandomAgent
-from DQN_agent import DQN_NeuronNetwork
+from DQN_agent import DQN_NeuronNetwork, DQN_agent
 from ReplayBuffer import ExperienceReplayBuffer, Experience
 import torch.optim as optim
 import random
@@ -86,16 +87,16 @@ Z = np.floor(0.9 * N_episodes)
 # method to decay epsilon
 eps_decay_method = 2
 
-def epsilonDecay(method = eps_decay_method):
-    ''' the function to update the epsilon, function of episode '''
-    def eps_decay(episode):
-        if (method == 1):
-            episode = np.max([eps_min, eps_max - ((eps_max - eps_min) * (episode - 1) / (Z - 1))])
-        else:
-            episode = np.max([eps_min, eps_max * np.float_power(eps_min / eps_max, (episode - 1) / (Z - 1))])
-        return episode
+# def epsilonDecay(method = eps_decay_method):
+#     ''' the function to update the epsilon, function of episode '''
+#     def eps_decay(episode):
+#         if (method == 1):
+#             episode = np.max([eps_min, eps_max - ((eps_max - eps_min) * (episode - 1) / (Z - 1))])
+#         else:
+#             episode = np.max([eps_min, eps_max * np.float_power(eps_min / eps_max, (episode - 1) / (Z - 1))])
+#         return episode
 
-    return eps_decay
+#     return eps_decay
 
 # discount factor
 gamma = discount_factor
@@ -111,21 +112,28 @@ alpha = 0.0005
 # n1 = np.int32(np.sqrt((n_actions + 2) * N) + 2 * np.sqrt(N / (n_actions + 2)))
 # n2 = np.int32(n_actions * np.sqrt(N & (n_actions + 2)))
 
-n1 = 30
-n2 = 50
+n1 = 80
+n2 = 80
 # neuron network design
 neuron_layers = 2
 neuron_num_per_layer = [n1, n2]
 
+# to clip gradient
+gradient_clip = True
 # optimizer clipping of gradient between 0.5 - 2
 clipping_value = 1.
 
 CER = True
 dueling = True
-suffix = "a_5e4_nn_{0}_{1}_".format(n1,n2) + "cer_1" + "duel_1"
+suffix = "a_5e4_nn_{0}_{1}_".format(n1,n2) + "cer_1" + "duel_1_newDes_"
 
 
-def DQN_learn(env, eps_decay_Func = epsilonDecay(eps_decay_method), 
+# def DQN_learn(env, eps_decay_Func = epsilonDecay(eps_decay_method), 
+#     discount_factor = gamma, buffer_size = L,  train_batch_size = N,
+#     episodes = EPISODES, target_freq_update = C, learning_rate = alpha, 
+#     neuron_layers = neuron_layers, neuronNums = neuron_num_per_layer, clipping_value = clipping_value,
+#     exp_cer = True, dueling = dueling):
+def DQN_learn(env, eps_decay_method = eps_decay_method, 
     discount_factor = gamma, buffer_size = L,  train_batch_size = N,
     episodes = EPISODES, target_freq_update = C, learning_rate = alpha, 
     neuron_layers = neuron_layers, neuronNums = neuron_num_per_layer, clipping_value = clipping_value,
@@ -164,67 +172,46 @@ def DQN_learn(env, eps_decay_Func = epsilonDecay(eps_decay_method),
     }
     '''
 
-    # create agent
+    # new design
 
-    # agent = RandomAgent(n_actions=n_actions, n_outputs = 8, layers = neuron_layers, neuronNums = neuronNums)
-    agent = DQN_NeuronNetwork(n_actions=n_actions, n_inputs = 8, layers = neuron_layers, neuronNums = neuronNums, dueling=dueling)
-    # copy from agent
-    agent_target = copy.deepcopy(agent)
-    agent_target.load_state_dict(agent.state_dict())
-    # create experience buffer
-    buffer = ExperienceReplayBuffer(maximum_length=buffer_size, CER = exp_cer)
-    # create optimizer
-    optimizer = optim.Adam(agent.parameters(), lr = learning_rate)
-    # loss function
-    loss_fn = torch.nn.MSELoss()
+    agent = DQN_agent(n_actions, eps_decay_method=eps_decay_method, discount_factor = discount_factor, buffer_size = buffer_size,
+    cer = exp_cer, train_batch_size = train_batch_size, dueling = dueling, episodes = N_episodes, 
+    target_freq_update = target_freq_update, learning_rate = learning_rate, 
+    n_inputs = 8, layers = neuron_layers, neuronNums= neuronNums, 
+    gradient_clip= gradient_clip, gradient_clip_max=clipping_value)
 
+    # initialize experience buffer
+    agent.init_ExperienceBuffer(env, updateLen = 50)
     # episode reward and total number of steps lists
     episode_reward_list = []
     episode_number_of_steps = []
     result_dict = {}
-
-    # initialize buffers
-    state = env.reset()
-
-    for i in range(buffer_size):
-        action = np.random.randint(0,n_actions)
-        next_state, reward, done, _ = env.step(action)
-        # experience created
-        exp = Experience(state, action, reward, next_state, done)
-        buffer.append(exp)
-        state = next_state
-        if i % 50 == 0 :
-            state = env.reset()
-        
     for episode in EPISODES:
         # Reset enviroment data and initialize variables
         done = False
         state = env.reset()
+        # reset agent
+        epsilon = agent.reset(episode)
         total_episode_reward = 0.
         t = 0
-        epsilon = eps_decay_Func(episode)
+        # epsilon = eps_decay_Func(episode)
         # moves in current episode
         move_count = 0
         while not done:
             move_count += 1
-            # create state tensor
-            state_tensor = torch.tensor(state, requires_grad=False, dtype=torch.float32)
-            # calculate the q value
-            qval = agent(state_tensor)
-            # Take a random action, epsilon greedy
-            if (random.random() < epsilon):
-                action = np.random.randint(0, n_actions)
-            else :
-                action = np.argmax(qval.data.numpy())
-
+            action = agent.forward(state)
+            # # create state tensor
+            # state_tensor = torch.tensor(state, requires_grad=False, dtype=torch.float32)
+            # # take action
+            # action = agent.takeAction(epsilon, state_tensor)
             # Get next state and reward.  The done variable
             # will be True if you reached the goal position,
             # False otherwise
             next_state, reward, done, _ = env.step(action)
-
-            # experience created
-            exp = Experience(state, action, reward, next_state, done)
-            buffer.append(exp)
+            agent.appendExperience(state, action, reward, next_state, done)
+            # # experience created
+            # exp = Experience(state, action, reward, next_state, done)
+            # buffer.append(exp)
             # Update episode reward
             total_episode_reward += reward
 
@@ -232,37 +219,39 @@ def DQN_learn(env, eps_decay_Func = epsilonDecay(eps_decay_method),
             state = next_state
             t+= 1
 
-            # mini batch train NN
-            if (len(buffer) >= train_batch_size):
-                # sample
-                states, actions, rewards, next_states, dones = buffer.sample_batch(n = train_batch_size)
+            # train the agent
+            agent.backward()
+            # # mini batch train NN
+            # if (len(buffer) >= train_batch_size):
+            #     # sample
+            #     states, actions, rewards, next_states, dones = buffer.sample_batch(n = train_batch_size)
 
-                # training process, set grad to 0
-                optimizer.zero_grad()
+            #     # training process, set grad to 0
+            #     optimizer.zero_grad()
 
-                # get value
-                Q1 = agent(torch.tensor(states, requires_grad=True,
-                                        dtype=torch.float32))
+            #     # get value
+            #     Q1 = agent(torch.tensor(states, requires_grad=True,
+            #                             dtype=torch.float32))
                 
-                # do not need grad
-                with torch.no_grad():
-                    Q2 = agent_target(torch.tensor(next_states, requires_grad=False,dtype=torch.float32))
+            #     # do not need grad
+            #     with torch.no_grad():
+            #         Q2 = agent_target(torch.tensor(next_states, requires_grad=False,dtype=torch.float32))
                 
-                rewards = torch.tensor(rewards, requires_grad=False,dtype=torch.float32)
-                dones = torch.tensor(dones, requires_grad=False,dtype=torch.float32)
+            #     rewards = torch.tensor(rewards, requires_grad=False,dtype=torch.float32)
+            #     dones = torch.tensor(dones, requires_grad=False,dtype=torch.float32)
 
-                newRewards = rewards + discount_factor * (1 - dones) * torch.max(Q2,dim=1)[0]
-                actions = torch.tensor(actions, requires_grad=False, dtype=torch.int64)
-                # calculated using updated model
-                oldRewards = Q1.gather(dim=1, index=actions.unsqueeze(dim=1)).squeeze()
-                loss = loss_fn(oldRewards, newRewards.detach())
-                loss.backward()
-                # clip gradient
-                nn.utils.clip_grad_norm_(agent.parameters(), max_norm=1.)
-                optimizer.step()
-                # update the agent target
-                if move_count % train_batch_size == 0:
-                    agent_target.load_state_dict(agent.state_dict())
+            #     newRewards = rewards + discount_factor * (1 - dones) * torch.max(Q2,dim=1)[0]
+            #     actions = torch.tensor(actions, requires_grad=False, dtype=torch.int64)
+            #     # calculated using updated model
+            #     oldRewards = Q1.gather(dim=1, index=actions.unsqueeze(dim=1)).squeeze()
+            #     loss = loss_fn(oldRewards, newRewards.detach())
+            #     loss.backward()
+            #     # clip gradient
+            #     nn.utils.clip_grad_norm_(agent.parameters(), max_norm=1.)
+            #     optimizer.step()
+            #     # update the agent target
+            #     if move_count % target_freq_update == 0:
+            #         agent_target.load_state_dict(agent.state_dict())
 
 
         # Append episode reward and total number of steps
@@ -285,11 +274,142 @@ def DQN_learn(env, eps_decay_Func = epsilonDecay(eps_decay_method),
     # save agent_target
     network_name = "network_1" + suffix + ".pt"
     print("network saved as " + network_name)
-    torch.save(agent_target, network_name)
+    agent.save_target_nn(network_name)
+    # torch.save(agent_target, network_name)
 
     result_dict["episode_reward_list"] = episode_reward_list
     result_dict["episode_number_of_steps"] = episode_number_of_steps
     return result_dict
+
+
+
+    # old version, explicitly create neuron network
+    # # create agent
+
+    # # agent = RandomAgent(n_actions=n_actions, n_outputs = 8, layers = neuron_layers, neuronNums = neuronNums)
+    # agent = DQN_NeuronNetwork(n_actions=n_actions, n_inputs = 8, layers = neuron_layers, neuronNums = neuronNums, dueling=dueling)
+    # # copy from agent
+    # agent_target = copy.deepcopy(agent)
+    # agent_target.load_state_dict(agent.state_dict())
+    # # create experience buffer
+    # buffer = ExperienceReplayBuffer(maximum_length=buffer_size, CER = exp_cer)
+    # # create optimizer
+    # optimizer = optim.Adam(agent.parameters(), lr = learning_rate)
+    # # loss function
+    # loss_fn = torch.nn.MSELoss()
+
+    # # episode reward and total number of steps lists
+    # episode_reward_list = []
+    # episode_number_of_steps = []
+    # result_dict = {}
+
+    # # initialize buffers
+    # state = env.reset()
+
+    # for i in range(buffer_size):
+    #     action = np.random.randint(0,n_actions)
+    #     next_state, reward, done, _ = env.step(action)
+    #     # experience created
+    #     exp = Experience(state, action, reward, next_state, done)
+    #     buffer.append(exp)
+    #     state = next_state
+    #     if i % 50 == 0 :
+    #         state = env.reset()
+        
+    # for episode in EPISODES:
+    #     # Reset enviroment data and initialize variables
+    #     done = False
+    #     state = env.reset()
+    #     total_episode_reward = 0.
+    #     t = 0
+    #     epsilon = eps_decay_Func(episode)
+    #     # moves in current episode
+    #     move_count = 0
+    #     while not done:
+    #         move_count += 1
+    #         # create state tensor
+    #         state_tensor = torch.tensor(state, requires_grad=False, dtype=torch.float32)
+    #         # calculate the q value
+    #         qval = agent(state_tensor)
+    #         # Take a random action, epsilon greedy
+    #         if (random.random() < epsilon):
+    #             action = np.random.randint(0, n_actions)
+    #         else :
+    #             action = np.argmax(qval.data.numpy())
+
+    #         # Get next state and reward.  The done variable
+    #         # will be True if you reached the goal position,
+    #         # False otherwise
+    #         next_state, reward, done, _ = env.step(action)
+
+    #         # experience created
+    #         exp = Experience(state, action, reward, next_state, done)
+    #         buffer.append(exp)
+    #         # Update episode reward
+    #         total_episode_reward += reward
+
+    #         # Update state for next iteration
+    #         state = next_state
+    #         t+= 1
+
+    #         # mini batch train NN
+    #         if (len(buffer) >= train_batch_size):
+    #             # sample
+    #             states, actions, rewards, next_states, dones = buffer.sample_batch(n = train_batch_size)
+
+    #             # training process, set grad to 0
+    #             optimizer.zero_grad()
+
+    #             # get value
+    #             Q1 = agent(torch.tensor(states, requires_grad=True,
+    #                                     dtype=torch.float32))
+                
+    #             # do not need grad
+    #             with torch.no_grad():
+    #                 Q2 = agent_target(torch.tensor(next_states, requires_grad=False,dtype=torch.float32))
+                
+    #             rewards = torch.tensor(rewards, requires_grad=False,dtype=torch.float32)
+    #             dones = torch.tensor(dones, requires_grad=False,dtype=torch.float32)
+
+    #             newRewards = rewards + discount_factor * (1 - dones) * torch.max(Q2,dim=1)[0]
+    #             actions = torch.tensor(actions, requires_grad=False, dtype=torch.int64)
+    #             # calculated using updated model
+    #             oldRewards = Q1.gather(dim=1, index=actions.unsqueeze(dim=1)).squeeze()
+    #             loss = loss_fn(oldRewards, newRewards.detach())
+    #             loss.backward()
+    #             # clip gradient
+    #             nn.utils.clip_grad_norm_(agent.parameters(), max_norm=1.)
+    #             optimizer.step()
+    #             # update the agent target
+    #             if move_count % target_freq_update == 0:
+    #                 agent_target.load_state_dict(agent.state_dict())
+
+
+    #     # Append episode reward and total number of steps
+    #     episode_reward_list.append(total_episode_reward)
+    #     episode_number_of_steps.append(t)
+
+    #     # Close environment
+    #     env.close()
+
+    #     # Updates the tqdm update bar with fresh information
+    #     # (episode number, total reward of the last episode, total number of Steps
+    #     # of the last episode, average reward, average number of steps)
+    #     # set terminal size smaller to fully print result
+    #     EPISODES.set_description(
+    #         "Epsilon {} ,Episode {} - Reward/Steps: {:.1f}/{} - Avg. Reward/Steps: {:.1f}/{}".format(
+    #         epsilon, episode, total_episode_reward, t,
+    #         running_average(episode_reward_list, n_ep_running_average)[-1],
+    #         running_average(episode_number_of_steps, n_ep_running_average)[-1]))
+    
+    # # save agent_target
+    # network_name = "network_1" + suffix + ".pt"
+    # print("network saved as " + network_name)
+    # torch.save(agent_target, network_name)
+
+    # result_dict["episode_reward_list"] = episode_reward_list
+    # result_dict["episode_number_of_steps"] = episode_number_of_steps
+    # return result_dict
 
 result_dict = DQN_learn(env)
 episode_reward_list = result_dict["episode_reward_list"] 
