@@ -452,3 +452,7 @@ class DQN_agent(Agent):
     def save_target_nn(self, fileName):
         ''' save the target nn parameters'''
         torch.save(self.target_nn, fileName)
+
+    def save_main_nn(self, fileName):
+        ''' save the main nn parameters'''
+        torch.save(self.main_nn, fileName)

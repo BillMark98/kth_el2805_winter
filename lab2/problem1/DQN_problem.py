@@ -271,10 +271,10 @@ def DQN_learn(env, eps_decay_method = eps_decay_method,
             running_average(episode_reward_list, n_ep_running_average)[-1],
             running_average(episode_number_of_steps, n_ep_running_average)[-1]))
     
-    # save agent_target
+    # save agent
     network_name = "network_1" + suffix + ".pt"
     print("network saved as " + network_name)
-    agent.save_target_nn(network_name)
+    agent.save_main_nn(network_name)
     # torch.save(agent_target, network_name)
 
     result_dict["episode_reward_list"] = episode_reward_list
