@@ -235,19 +235,20 @@ def DDPG_learn(env,
         # of the last episode, average reward, average number of steps)
         # set terminal size smaller to fully print result
         running_average_reward = running_average(episode_reward_list, n_ep_running_average)[-1]
-        if (not begin_optimal and (running_average_reward > threshold)):
+
+        EPISODES.set_description(
+            "Episode {} - Reward/Steps: {:.1f}/{} - Avg. Reward/Steps: {:.1f}/{}".format(
+            episode, total_episode_reward, t,
+            running_average_reward,
+            running_average(episode_number_of_steps, n_ep_running_average)[-1]))
+        if ( (not begin_optimal) and (running_average_reward > threshold)):
             begin_optimal = True
             optimal_count_len = 0
         elif (begin_optimal and (running_average_reward > threshold)):
             optimal_count_len += 1
             if (optimal_count_len > optimal_len):
                 print("optimal len hit, exit prematurely")
-                break
-        EPISODES.set_description(
-            "Episode {} - Reward/Steps: {:.1f}/{} - Avg. Reward/Steps: {:.1f}/{}".format(
-            episode, total_episode_reward, t,
-            running_average(episode_reward_list, n_ep_running_average)[-1],
-            running_average(episode_number_of_steps, n_ep_running_average)[-1]))
+                break            
     
     # save agent
     Q_network_name = "Q_network_1" + suffix + ".pt"

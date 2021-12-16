@@ -4,6 +4,10 @@ from minotaurMaze import Maze, dynamic_programming, animate_solution
 import numpy as np
 import matplotlib.pyplot as plt
 
+import os
+
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 maze = np.array([
     [0, 0, 1, 0, 0, 0, 0, 0],
     [0, 0, 1, 0, 0, 1, 0, 0],
@@ -33,7 +37,7 @@ for horizon_time in range(1, T+1):
     start_vector[start_s] = 1.
     current_state = start_vector
     V, policy= dynamic_programming(env,horizon_time)
-    print("For T = ", str(horizon_time) + ": ")
+    # print("For T = ", str(horizon_time) + ": ")
     for t in range(1, horizon_time+1):
         new_state = np.zeros((env.n_states, 1))
         #go through all possible states (basically we loop through current_state)
@@ -55,15 +59,17 @@ for horizon_time in range(1, T+1):
         current_state =new_state
         #sanity check
 
-    print("Total probability: ", np.sum(current_state))
+    # print("Total probability: ", np.sum(current_state))
+    # print("exit prob : ", exit_probability[-1])
     #print the probability of exiting (reaches goal sucessfully that is the value of the first state)
-    exit_probability.append(current_state[0])
+    exit_probability.append(current_state[0][0])
     time_vector.append(horizon_time)
-
 print(exit_probability)
 plt.plot(time_vector, exit_probability)
 plt.title("Exit probability vs horizon T")
 plt.xlabel("T")
 plt.ylabel("Exit probability")
-plt.savefig("exitprobability_problemcplot")
+saveName = "exitprobability_problemcplot.png"
+print("saved at " + saveName)
+plt.savefig(saveName)
 plt.show()

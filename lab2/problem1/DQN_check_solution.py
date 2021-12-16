@@ -69,6 +69,7 @@ for i in EPISODES:
         # will be True if you reached the goal position,
         # False otherwise
         q_values = model(torch.tensor([state]))
+        # env.render()
         _, action = torch.max(q_values, axis=1)
         next_state, reward, done, _ = env.step(action.item())
 

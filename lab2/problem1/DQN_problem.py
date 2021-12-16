@@ -112,6 +112,9 @@ alpha = 0.0005
 # n1 = np.int32(np.sqrt((n_actions + 2) * N) + 2 * np.sqrt(N / (n_actions + 2)))
 # n2 = np.int32(n_actions * np.sqrt(N & (n_actions + 2)))
 
+# ****************************************
+# ****************************************
+# !! set parameters here!!
 n1 = 80
 n2 = 80
 # neuron network design
@@ -125,7 +128,24 @@ clipping_value = 1.
 
 CER = True
 dueling = True
-suffix = "a_5e4_nn_{0}_{1}_".format(n1,n2) + "cer_1" + "duel_1_newDes_"
+adaptiveC = False
+preExit_episodeMin = 300
+# prematurely stop if average reward above a threshold
+premature_stop = False
+# load previous learned model, instead of learning from scratch
+loadPrev = True
+modelFileName = 'neural-network-1.pth'
+
+# ****************************************
+# ****************************************
+
+# suffix = "a_5e4_nn_{0}_{1}_".format(n1,n2) + "cer_1" + "duel_1_newDes_preExit_adapC_"
+# suffix = "a_5e4_nn_{0}_{1}_".format(n1,n2) + "cer_1" + "duel_1_newDes_preExit_"
+suffix = "a_5e4_nn_{0}_{1}_".format(n1,n2) + "cer_1" + "duel_1_newDes_tillEnd_loadPrev_"
+
+
+
+
 
 
 # def DQN_learn(env, eps_decay_Func = epsilonDecay(eps_decay_method), 
@@ -137,7 +157,8 @@ def DQN_learn(env, eps_decay_method = eps_decay_method,
     discount_factor = gamma, buffer_size = L,  train_batch_size = N,
     episodes = EPISODES, target_freq_update = C, learning_rate = alpha, 
     neuron_layers = neuron_layers, neuronNums = neuron_num_per_layer, clipping_value = clipping_value,
-    exp_cer = True, dueling = dueling):
+    exp_cer = True, dueling = dueling,premature_stop = premature_stop, threshold = 190, optimal_len = 50, adaptiveC=adaptiveC,
+    loadPrev = loadPrev, modelFileName = modelFileName):
 
     ''' DQN learning algorithms
     
@@ -161,6 +182,18 @@ def DQN_learn(env, eps_decay_method = eps_decay_method,
 
     exp_cer : boolean, to use cer for replay buffer or not
 
+    premature_stop : stop if performs good for some time
+    
+    threshold : default 120
+    
+    optimal_len = 50        
+
+    adaptiveC : make the C step adaptive
+
+    loadPrev : initialize the model from previously trained, default False
+
+    modelFileName : the network model file name
+    
     -----
     return
     ------
@@ -178,7 +211,8 @@ def DQN_learn(env, eps_decay_method = eps_decay_method,
     cer = exp_cer, train_batch_size = train_batch_size, dueling = dueling, episodes = N_episodes, 
     target_freq_update = target_freq_update, learning_rate = learning_rate, 
     n_inputs = 8, layers = neuron_layers, neuronNums= neuronNums, 
-    gradient_clip= gradient_clip, gradient_clip_max=clipping_value)
+    gradient_clip= gradient_clip, gradient_clip_max=clipping_value, adaptiveC=adaptiveC,
+    loadPrev = loadPrev, modelFileName = modelFileName)
 
     # initialize experience buffer
     agent.init_ExperienceBuffer(env, updateLen = 50)
@@ -186,6 +220,7 @@ def DQN_learn(env, eps_decay_method = eps_decay_method,
     episode_reward_list = []
     episode_number_of_steps = []
     result_dict = {}
+    begin_optimal = False
     for episode in EPISODES:
         # Reset enviroment data and initialize variables
         done = False
@@ -207,7 +242,9 @@ def DQN_learn(env, eps_decay_method = eps_decay_method,
             # Get next state and reward.  The done variable
             # will be True if you reached the goal position,
             # False otherwise
+            # env.render()
             next_state, reward, done, _ = env.step(action)
+            # env.render()
             agent.appendExperience(state, action, reward, next_state, done)
             # # experience created
             # exp = Experience(state, action, reward, next_state, done)
@@ -261,6 +298,8 @@ def DQN_learn(env, eps_decay_method = eps_decay_method,
         # Close environment
         env.close()
 
+        running_average_reward = running_average(episode_reward_list, n_ep_running_average)[-1]
+
         # Updates the tqdm update bar with fresh information
         # (episode number, total reward of the last episode, total number of Steps
         # of the last episode, average reward, average number of steps)
@@ -268,8 +307,18 @@ def DQN_learn(env, eps_decay_method = eps_decay_method,
         EPISODES.set_description(
             "Epsilon {} ,Episode {} - Reward/Steps: {:.1f}/{} - Avg. Reward/Steps: {:.1f}/{}".format(
             epsilon, episode, total_episode_reward, t,
-            running_average(episode_reward_list, n_ep_running_average)[-1],
+            running_average_reward,
             running_average(episode_number_of_steps, n_ep_running_average)[-1]))
+        # first consider pre exit after some episodes
+        if (episode > preExit_episodeMin and (premature_stop)):
+            if ( (not begin_optimal) and (running_average_reward > threshold)):
+                begin_optimal = True
+                optimal_count_len = 0
+            elif (begin_optimal and (running_average_reward > threshold)):
+                optimal_count_len += 1
+                if (optimal_count_len > optimal_len):
+                    print("optimal len hit, exit prematurely")
+                    break            
     
     # save agent
     network_name = "network_1" + suffix + ".pt"
@@ -454,6 +503,8 @@ episode_number_of_steps = result_dict["episode_number_of_steps"]
 #         running_average(episode_number_of_steps, n_ep_running_average)[-1]))
 
 
+# possible that length is smaller than N_episodes
+N_episodes = len(episode_reward_list)
 # Plot Rewards and steps
 fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 9))
 ax[0].plot([i for i in range(1, N_episodes+1)], episode_reward_list, label='Episode reward')

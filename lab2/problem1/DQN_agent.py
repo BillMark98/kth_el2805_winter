@@ -255,7 +255,8 @@ class DQN_agent(Agent):
      discount_factor = 0.95, buffer_size = 10000, 
     cer = True,train_batch_size = 128, dueling = True, episodes = 1000, target_freq_update = 50, 
     learning_rate = 1e-3, n_inputs = 8, layers = 2, neuronNums= [6,6],
-    gradient_clip = True, gradient_clip_max = 1.):
+    gradient_clip = True, gradient_clip_max = 1., adaptiveC=False,
+    loadPrev = False, modelFileName = 'neural-network-1.pth'):
         '''
 
         ----
@@ -281,6 +282,8 @@ class DQN_agent(Agent):
         gradient_clip_max : float
             absolute cliping value, default 1.0
 
+        adaptiveC : make C step adaptive
+
         '''
         super().__init__(n_actions)
         self.n_actions = n_actions
@@ -296,7 +299,10 @@ class DQN_agent(Agent):
         # n_outputs = n_actions
         
         # main neuron networks
-        self.main_nn = DQN_NeuronNetwork(n_actions, n_inputs, layers, neuronNums=neuronNums, dueling=dueling)
+        if (loadPrev):
+            self.main_nn = torch.load(modelFileName)
+        else:
+            self.main_nn = DQN_NeuronNetwork(n_actions, n_inputs, layers, neuronNums=neuronNums, dueling=dueling)
         # target neuron networks
         self.target_nn = copy.deepcopy(self.main_nn)
         self.target_nn.load_state_dict(self.main_nn.state_dict())
@@ -314,15 +320,22 @@ class DQN_agent(Agent):
         self.buffer_size = buffer_size
         self.train_batch_size = train_batch_size
         self.target_freq_update = target_freq_update
+        self.current_update_freq = 2
 
 
         # move count
 
         self.move_count = 0
+        self.adaptiveC = adaptiveC
+        if adaptiveC:
+            print("Choose adaptive C step")
 
         # episode count
         self.episode = 0
         # epsilon calculate function
+        if (loadPrev):
+            global eps_max
+            eps_max = 0.05
         self.eps_decay_Func = epsilonDecay(method = eps_decay_method)
         self.epsilon = 0
 
@@ -344,6 +357,10 @@ class DQN_agent(Agent):
         self.move_count = 0
         self.episode = episode
         self.epsilon = self.eps_decay_Func(episode)
+        if (self.adaptiveC):
+            self.current_update_freq = min(self.target_freq_update, max(self.episode // 2, 2))
+        else:
+            self.current_update_freq = self.target_freq_update
         return self.epsilon
 
     def init_ExperienceBuffer(self, env, method = 1, **kargs):
@@ -426,12 +443,17 @@ class DQN_agent(Agent):
             self.optimizer.zero_grad()
 
             # get value
-            Q1 = self.main_nn(torch.tensor(states, requires_grad=True,
+            # considering the message
+            # UserWarning: Creating a tensor from a list of numpy.ndarrays is extremely slow. 
+            # Please consider converting the list to a single numpy.ndarray with numpy.array() 
+            # before converting to a tensor. (Triggered internally at  
+            # /Users/distiller/project/conda/conda-bld/pytorch_1634272478997/work/torch/csrc/utils/tensor_new.cpp:201.)
+            Q1 = self.main_nn(torch.tensor(np.array(states), requires_grad=True,
                                     dtype=torch.float32))
             
             # do not need grad
             with torch.no_grad():
-                Q2 = self.target_nn(torch.tensor(next_states, requires_grad=False,dtype=torch.float32))
+                Q2 = self.target_nn(torch.tensor(np.array(next_states), requires_grad=False,dtype=torch.float32))
             
             rewards = torch.tensor(rewards, requires_grad=False,dtype=torch.float32)
             dones = torch.tensor(dones, requires_grad=False,dtype=torch.float32)
@@ -447,7 +469,8 @@ class DQN_agent(Agent):
                 nn.utils.clip_grad_norm_(self.main_nn.parameters(), max_norm=self.gradient_clip_max)
             self.optimizer.step()
             # update the agent target
-            if self.move_count % self.train_batch_size == 0:
+
+            if self.move_count % self.current_update_freq == 0:
                 self.target_nn.load_state_dict(self.main_nn.state_dict())
     def save_target_nn(self, fileName):
         ''' save the target nn parameters'''

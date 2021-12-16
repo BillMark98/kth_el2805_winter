@@ -39,7 +39,10 @@ col_map = {0: WHITE, 1: BLACK, 2: LIGHT_GREEN, -6: LIGHT_RED, -1: LIGHT_RED, 3: 
 
 # rewardScheme = "NewReward"
 # oldReward
-rewardScheme = "oldReward"
+# rewardScheme = "oldReward"
+# rewardScheme = "modified_proposedReward"
+rewardScheme = "proposedReward"
+
 
 class Maze:
 
@@ -66,11 +69,22 @@ class Maze:
         GOAL_REWARD = 0
         IMPOSSIBLE_REWARD = -7
         EATEN_REWARD = -10
+    elif (rewardScheme == "modified_proposedReward"):
+        STEP_REWARD = 0
+        GOAL_REWARD = 1
+        IMPOSSIBLE_REWARD = -1
+        EATEN_REWARD = -10
+    elif (rewardScheme == "proposedReward"):
+        STEP_REWARD = 0
+        GOAL_REWARD = 1
+        IMPOSSIBLE_REWARD = 0
+        EATEN_REWARD = 0
     else:
         STEP_REWARD = -1
         GOAL_REWARD = 0
         IMPOSSIBLE_REWARD = -100
-        EATEN_REWARD = -1000        
+        EATEN_REWARD = -1000   
+    MAX_ABS_REWARD = max(np.abs([STEP_REWARD, GOAL_REWARD, IMPOSSIBLE_REWARD, EATEN_REWARD]))
     # special state enumeration
     STATE_EXIT = 0
     STATE_EATEN = 1
@@ -481,7 +495,7 @@ class Maze:
             reward_instantaneous = self.STEP_REWARD
         
         if (self.scaleReward):
-            reward_instantaneous = reward_instantaneous / abs(self.EATEN_REWARD)
+            reward_instantaneous = reward_instantaneous / self.MAX_ABS_REWARD
         stateDict["next_stateNum"] = next_stateNum
         stateDict["next_statePos"] = next_statePos
         stateDict["reward_instantaneous"] = reward_instantaneous
@@ -498,6 +512,7 @@ class Maze:
             next_statePos : [(a_r, a_c, m_r1, m_c1), (a_r, a_c, m_r2, m_c2),...]
             action_rewards: [-1, -1,...]
             state_transitionProb : { 0 : 1/4, ...}
+            mean_reward: value
 
             Note that it is possible there are multiple same states, so the probability is not uniform,
             but need to sum all the occurences of one state and divided by the whole length. This does not apply to the reward calculation,
@@ -507,6 +522,9 @@ class Maze:
         # state transition probability dictionary
         state_transitionProb = dict()
 
+        #mean_reward
+
+        mean_reward = 0
         # Compute the future position given current (stateNum, action)
         # if a normal state
         if (stateNum != self.STATE_EXIT and stateNum != self.STATE_EATEN):
@@ -586,6 +604,8 @@ class Maze:
                         # an error occurred, because this state should be unique
                         raise Exception("normal state visted more than once!")
                     state_transitionProb[next_stateNum[index]] = probability_vec[index]
+                mean_reward += probability_vec[index] * action_rewards[index]
+                
             # # update the prob
             # for key in state_transitionProb.keys():
             #     # calculate the probability
@@ -595,7 +615,7 @@ class Maze:
             next_statePos = [self.STATE_EXIT]
             next_stateNum = [self.STATE_EXIT]
 
-            if (self.greedyGoal):
+            if (self.greedyGoal and rewardScheme != "proposedReward"):
                 # if (action != self.STAY):
                 #     action_rewards = [self.STEP_REWARD]
                 # else:
@@ -604,6 +624,7 @@ class Maze:
             else:
                 action_rewards = [self.STEP_REWARD]
             state_transitionProb[self.STATE_EXIT] = 1
+            mean_reward = action_rewards[0]
         else:
             # eaten stateNum
             next_statePos = [self.STATE_EATEN]
@@ -614,16 +635,22 @@ class Maze:
             else:
                 action_rewards = [self.EATEN_REWARD]
             state_transitionProb[self.STATE_EXIT] = 1
-        
+            mean_reward = action_rewards[0]
         if (self.scaleReward):
             action_rewards = np.array(action_rewards)
-            action_rewards = action_rewards / abs(self.EATEN_REWARD)
+            action_rewards = action_rewards / self.MAX_ABS_REWARD
+            mean_reward /= self.MAX_ABS_REWARD
         
         moveResult = dict()
         moveResult['next_statePos'] = next_statePos
         moveResult['next_stateNum'] = next_stateNum
         moveResult['action_rewards'] = action_rewards
         moveResult['state_transitionProb'] = state_transitionProb
+        # # calculate the mean reward
+        # if (len(action_rewards) != state_transitionProb):
+        #     raise Exception("len(action_rewards) unequal to len(state_transitionProb")
+        # mean_reward = np.dot(action_rewards, state_transitionProb)
+        moveResult['mean_reward'] = mean_reward
         return moveResult
 
     def __transitions(self):
@@ -655,8 +682,10 @@ class Maze:
                 for a in range(self.n_actions):
                     moveResult = self.__moveResult(s,a);
                     action_rewards = moveResult['action_rewards']
-                    # calculate the average of rewards
-                    rewards[s,a] = np.sum(action_rewards) / len(action_rewards)
+                    # wrong calculation because each action_rewards may not be equally distributed
+                    # # calculate the average of rewards
+                    # rewards[s,a] = np.sum(action_rewards) / len(action_rewards)
+                    rewards[s,a] = moveResult['mean_reward']
 
         # If the weights are described by a weight matrix
         else:
@@ -667,10 +696,11 @@ class Maze:
                      i,j = self.states[next_s];
                      # Simply put the reward as the weights o the next stateNum.
                      rewards[s,a] = weights[i][j];
-
-        if (self.scaleReward):
-            # the largest (abs) reward is eaten reward, devide by factor to make sure all rewards bounded by 1
-            rewards = rewards / abs(self.EATEN_REWARD)
+                     
+        # already scaled in the caller function, no need to scale it again
+        # if (self.scaleReward):
+        #     # the largest (abs) reward is eaten reward (for some case), devide by factor to make sure all rewards bounded by 1
+        #     rewards = rewards / self.MAX_ABS_REWARD
         return rewards;
 
     def getNextState(self, currentStateNum, currentState_actionNum):
@@ -731,6 +761,7 @@ class Maze:
                 t +=1;
                 s = next_s;
                 currentStatePos = next_statePos
+            return path
         if method == 'ValIter':
 
             try:
