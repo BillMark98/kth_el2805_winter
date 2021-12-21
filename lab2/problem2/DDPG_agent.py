@@ -1,3 +1,7 @@
+# Mikael Westlund   personal no. 9803217851
+# Panwei Hu t-no. 980709T518
+#  
+
 # Copyright [2020] [KTH Royal Institute of Technology] Licensed under the
 # Educational Community License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may
@@ -69,7 +73,9 @@ Z = np.floor(0.9 * N_episodes)
 
 #     return eps_decay
 
+# PRINT_GRAD = True
 PRINT_GRAD = False
+
 
 
 class ExperienceReplayBuffer(object):
@@ -222,6 +228,11 @@ class DDPG_NeuronNetwork_Actor(nn.Module):
             self.linear3 = nn.Linear(neuronNums[1], n_outputs)
             self.act3 = nn.Tanh()
 
+        # # for cuda
+
+        # self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        # self.to(self.device)
+
         # if (layers == 2):
         #     self.linear2 = nn.Linear(neuronNums[0], neuronNums[1])
         #     self.act2 = nn.ReLU()
@@ -317,6 +328,10 @@ class DDPG_NeuronNetwork_Critic(nn.Module):
         # # extra tanh
         # self.act4 = nn.Tanh()
 
+        
+        # self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        # self.to(self.device)
+
         # # for index in range(layers):
         # #     self.linearLists[index] = nn.Linear(inputCount, neuronNums[index])
         # #     self.actLists[index] = nn.ReLU()
@@ -395,15 +410,18 @@ class DDPG_agent(Agent):
     '''
     def __init__(self, n_actions: int,
      discount_factor = 0.95, buffer_size = 10000,  tau = 1e-3,
-    cer = True,train_batch_size = 128, dueling = True, episodes = 1000, target_freq_update = 50, 
+    cer = True,train_batch_size = 128,
+    init_fill_fraction = 1.,
+    episodes = 1000, target_freq_update = 50, 
     actor_learning_rate = 5e-5, critic_learning_rate = 5e-4, d = 2, n_inputs = 8, 
-    actor_neuron_layers = 3, actor_neuronNums= [400,200,200], 
-    critic_neuron_layers = 3, critic_neuronNums = [400,200,200], 
+    actor_neuron_layers = 2, actor_neuronNums= [400,200], 
+    critic_neuron_layers = 2, critic_neuronNums = [400,200], 
     mu = 0.15,sigma = 0.2,
     gradient_clip = True, gradient_clip_max = 1., premature_stop = True, threshold = 120, optimal_len = 50,
     adaptiveC=False,
     loadPrev = False, Q_networkFileName = 'neural-network-2-critic.pth',
-    pi_networkFileName = 'neural-network-2-actor.pth'):
+    pi_networkFileName = 'neural-network-2-actor.pth',
+    updateActorUseTarget = False):
         '''
 
         ----
@@ -504,7 +522,7 @@ class DDPG_agent(Agent):
         self.buffer_size = buffer_size
         self.train_batch_size = train_batch_size
         self.target_freq_update = target_freq_update
-
+        self.init_fill_fraction = init_fill_fraction
 
         # move count
 
@@ -512,6 +530,9 @@ class DDPG_agent(Agent):
 
         # episode count
         self.episode = 0
+
+        # for update using actor using critic target nn
+        self.updateActorUseTarget = updateActorUseTarget
         # epsilon calculate function
         # self.eps_decay_Func = epsilonDecay(method = eps_decay_method)
         # self.epsilon = 0
@@ -553,6 +574,9 @@ class DDPG_agent(Agent):
             # initialize buffers
         state = env.reset()
 
+        # total len to be filled
+        fillLen = np.int64(self.buffer_size * self.init_fill_fraction)
+
         if method == 1:
             try :
                 updateLen = kargs["updateLen"]
@@ -561,7 +585,7 @@ class DDPG_agent(Agent):
                 updateLen = 50
             else:
                     
-                for i in range(self.buffer_size):
+                for i in range(fillLen):
                     # generate 2-dim action [-1,1]
                     # action = np.random.randint(0,self.n_actions)
                     action = np.random.rand(2)* 2 - 1
@@ -634,8 +658,8 @@ class DDPG_agent(Agent):
             self.main_Q_optimizer.zero_grad()
 
             # get value
-            Q1 = self.main_Q_nn(states_tensor, torch.tensor(actions, requires_grad=True,dtype=torch.float32))
-            Q1 = Q1.squeeze()
+            main_Q_val = self.main_Q_nn(states_tensor, torch.tensor(actions, requires_grad=True,dtype=torch.float32))
+            main_Q_val = main_Q_val.squeeze()
             # do not need grad
             with torch.no_grad():
                 action_target_tensors = self.target_pi_nn(next_states_tensor)
@@ -644,11 +668,10 @@ class DDPG_agent(Agent):
             rewards = torch.tensor(rewards, requires_grad=False,dtype=torch.float32)
             dones = torch.tensor(dones, requires_grad=False,dtype=torch.float32)
 
-            newRewards = rewards + self.discount_factor * (1 - dones) * Q2
+            target_Q_val = rewards + self.discount_factor * (1 - dones) * Q2
             # calculated using updated model
-            # oldRewards = Q1.gather(dim=1, index=actions.unsqueeze(dim=1)).squeeze()
-            oldRewards = Q1
-            loss = self.Q_loss_fn(oldRewards, newRewards.detach())
+            # oldRewards = main_Q_val.gather(dim=1, index=actions.unsqueeze(dim=1)).squeeze()
+            loss = self.Q_loss_fn(main_Q_val, target_Q_val.detach())
 
             loss.backward()
             # debug check grad
@@ -665,7 +688,10 @@ class DDPG_agent(Agent):
                 #                     dtype=torch.float32)
                 # check if requires_grad == True
                 action_tensor = self.main_pi_nn(states_tensor)
-                policy_loss = -self.main_Q_nn(states_tensor.detach(), action_tensor).mean() 
+                if (self.updateActorUseTarget):
+                    policy_loss = -self.target_Q_nn(states_tensor.detach(), action_tensor).mean() 
+                else:
+                    policy_loss = -self.main_Q_nn(states_tensor.detach(), action_tensor).mean() 
                 # # or
                 # policy_loss = -self.main_Q_nn(states_tensor.detach(), action_tensor).detach().mean()
 

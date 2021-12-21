@@ -1,4 +1,6 @@
-
+# Mikael Westlund   personal no. 9803217851
+# Panwei Hu t-no. 980709T518
+#  
 import os
 import torch
 import gym

@@ -1,3 +1,6 @@
+# Mikael Westlund   personal no. 9803217851
+# Panwei Hu t-no. 980709T518
+#  
 # Copyright [2020] [KTH Royal Institute of Technology] Licensed under the
 # Educational Community License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may
@@ -106,8 +109,8 @@ agent = RandomAgent(m)
 # Training process
 EPISODES = trange(N_episodes, desc='Episode: ', leave=True)
 
-# suffix = "Q_nn_{0}_{1}_{2}_pi_nn_{3}_{4}_{5}".format(actor_neuronNums[0],actor_neuronNums[1],actor_neuronNums[2],critic_neuronNums[0],critic_neuronNums[1],critic_neuronNums[2])
-suffix = "Q_nn_{0}_{1}_pi_nn_{2}_{3}".format(actor_neuronNums[0],actor_neuronNums[1],critic_neuronNums[0],critic_neuronNums[1])
+# suffix = "V_nn_{0}_{1}_{2}_pi_nn_{3}_{4}_{5}".format(actor_neuronNums[0],actor_neuronNums[1],actor_neuronNums[2],critic_neuronNums[0],critic_neuronNums[1],critic_neuronNums[2])
+suffix = "V_nn_{0}_{1}_pi_nn_{2}_{3}".format(actor_neuronNums[0],actor_neuronNums[1],critic_neuronNums[0],critic_neuronNums[1])
 suffix += "Te_{0}".format(N_episodes)
 suffix += "LoadPrev_{0}".format(loadPrev)
 

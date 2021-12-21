@@ -1,3 +1,7 @@
+# Mikael Westlund   personal no. 9803217851
+# Panwei Hu t-no. 980709T518
+#  
+
 # Copyright [2020] [KTH Royal Institute of Technology] Licensed under the
 # Educational Community License, Version 2.0 (the "License"); you may
 # not use this file except in compliance with the License. You may
@@ -54,7 +58,11 @@ N_episodes = T_E               # Number of episodes to run for training
 discount_factor = 0.95         # Value of gamma
 n_ep_running_average = 50      # Running average of 50 episodes
 m = len(env.action_space.high) # dimensionality of the action
+loadPrev = False
+premature_stop = False
 
+# updateActorUseTarget = True
+updateActorUseTarget = False
 # Reward
 episode_reward_list = []  # Used to save episodes reward
 episode_number_of_steps = []
@@ -64,6 +72,7 @@ episode_number_of_steps = []
 gamma = 0.99
 L = 30000
 tau = 1e-3
+init_fill_fraction  = 0.2
 N = 64
 d = 2
 mu = 0.15
@@ -82,6 +91,7 @@ actor_neuronNums = [400,200]
 critic_neuron_layers = 2
 critic_neuronNums = [400,200] 
 
+gradient_clip = True
 clipping_value = 1.
 
 n_actions = 2
@@ -94,16 +104,25 @@ EPISODES = trange(N_episodes, desc='Episode: ', leave=True)
 
 # suffix = "Q_nn_{0}_{1}_{2}_pi_nn_{3}_{4}_{5}".format(actor_neuronNums[0],actor_neuronNums[1],actor_neuronNums[2],critic_neuronNums[0],critic_neuronNums[1],critic_neuronNums[2])
 suffix = "Q_nn_{0}_{1}_pi_nn_{2}_{3}".format(actor_neuronNums[0],actor_neuronNums[1],critic_neuronNums[0],critic_neuronNums[1])
-suffix += "Te_400"
+suffix += "act_lr{0:.0e}_crit_lr{1:.0e}".format(actor_learning_rate, critic_learning_rate)
+suffix += "initFill_{0:.0e}".format(init_fill_fraction)
+suffix += "Te_{0}".format(T_E)
+suffix += "d_{}".format(d)
+suffix += "ctc_tgt4act_{}".format(updateActorUseTarget)
 
 
 def DDPG_learn(env,
     discount_factor = gamma, buffer_size = L,  train_batch_size = N,
+    init_fill_fraction  = init_fill_fraction,
     episodes = EPISODES, d=d, actor_learning_rate = actor_learning_rate, critic_learning_rate=critic_learning_rate, 
     actor_neuron_layers = actor_neuron_layers, actor_neuronNums = actor_neuronNums, 
     critic_neuron_layers = critic_neuron_layers, critic_neuronNums = critic_neuronNums, 
+    mu = mu, sigma = sigma,
+    gradient_clip = gradient_clip,
     clipping_value = clipping_value,
-    exp_cer = True, premature_stop = True, threshold = 140, optimal_len = 50):
+    loadPrev = loadPrev,
+    exp_cer = True, premature_stop = premature_stop, threshold = 180, optimal_len = 50,
+    updateActorUseTarget = updateActorUseTarget):
 
     ''' DDPG learning algorithms
     
@@ -117,6 +136,10 @@ def DDPG_learn(env,
     
     train_batch_size:  the size to sample from the buffer to train 
 
+    init_fill_fraction  = 0.2
+
+        fraction to fill the buffer at init
+
     episodes: trange 
 
     target_freq_update: the frequency that the target param is updated
@@ -126,6 +149,8 @@ def DDPG_learn(env,
     clipping_value: the clipping value used for the optimizer to clip gradient
 
     exp_cer : boolean, to use cer for replay buffer or not
+
+    updateActorUseTarget: use critic target network to update main actor, default false
 
     -----
     return
@@ -140,12 +165,18 @@ def DDPG_learn(env,
 
 
     agent = DDPG_agent(n_actions, discount_factor = discount_factor, buffer_size = buffer_size, 
-    train_batch_size = train_batch_size, episodes = N_episodes, 
+    train_batch_size = train_batch_size, 
+    init_fill_fraction  = init_fill_fraction,
+    episodes = N_episodes, 
      actor_learning_rate = actor_learning_rate, 
     critic_learning_rate=critic_learning_rate,
+    d = d,
     n_inputs = 8, actor_neuron_layers = actor_neuron_layers, actor_neuronNums= actor_neuronNums, 
-    critic_neuron_layers = critic_neuron_layers, critic_neuronNums = critic_neuronNums, 
-    gradient_clip= clipping_value, gradient_clip_max=clipping_value, premature_stop = premature_stop, threshold = threshold, optimal_len = optimal_len)
+    critic_neuron_layers = critic_neuron_layers, critic_neuronNums = critic_neuronNums,
+    mu = mu, sigma = sigma, 
+    gradient_clip= gradient_clip, gradient_clip_max=clipping_value, 
+    premature_stop = premature_stop, threshold = threshold, optimal_len = optimal_len,
+    updateActorUseTarget = updateActorUseTarget)
 
     # initialize experience buffer
     agent.init_ExperienceBuffer(env, updateLen = 50)
@@ -308,6 +339,7 @@ episode_number_of_steps = result_dict["episode_number_of_steps"]
 #         running_average(episode_reward_list, n_ep_running_average)[-1],
 #         running_average(episode_number_of_steps, n_ep_running_average)[-1]))
 
+N_episodes = len(episode_reward_list)
 
 # Plot Rewards and steps
 fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 9))
