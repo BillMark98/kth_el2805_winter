@@ -256,7 +256,8 @@ class DQN_agent(Agent):
     '''
     def __init__(self, n_actions: int, eps_decay_method = eps_decay_method,
      discount_factor = 0.95, buffer_size = 10000, 
-    cer = True,train_batch_size = 128, dueling = True, episodes = 1000, target_freq_update = 50, 
+    cer = True,train_batch_size = 128, dueling = True, 
+    init_fill_fraction = 1., episodes = 1000, target_freq_update = 50, 
     learning_rate = 1e-3, n_inputs = 8, layers = 2, neuronNums= [6,6],
     gradient_clip = True, gradient_clip_max = 1., adaptiveC=False,
     loadPrev = False, modelFileName = 'neural-network-1.pth'):
@@ -324,6 +325,7 @@ class DQN_agent(Agent):
         self.train_batch_size = train_batch_size
         self.target_freq_update = target_freq_update
         self.current_update_freq = 2
+        self.init_fill_fraction = init_fill_fraction
 
 
         # move count
@@ -381,6 +383,10 @@ class DQN_agent(Agent):
             # initialize buffers
         state = env.reset()
 
+        # total len to be filled
+        fillLen = np.int64(self.buffer_size * self.init_fill_fraction)
+
+
         if method == 1:
             try :
                 updateLen = kargs["updateLen"]
@@ -389,7 +395,7 @@ class DQN_agent(Agent):
                 updateLen = 50
             else:
                     
-                for i in range(self.buffer_size):
+                for i in range(fillLen):
                     action = np.random.randint(0,self.n_actions)
                     next_state, reward, done, _ = env.step(action)
                     # experience created

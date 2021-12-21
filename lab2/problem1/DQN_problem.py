@@ -101,8 +101,18 @@ eps_decay_method = 2
 
 #     return eps_decay
 
+
+
+# n1 = np.int32(np.sqrt((n_actions + 2) * N) + 2 * np.sqrt(N / (n_actions + 2)))
+# n2 = np.int32(n_actions * np.sqrt(N & (n_actions + 2)))
+
+# ****************************************
+# ****************************************
+# !! set parameters here!!
+
+
 # discount factor
-gamma = discount_factor
+gamma = 1
 # buffer_size
 L = 10000
 # mini-batch size
@@ -112,12 +122,6 @@ C = L // N
 # learning rate
 alpha = 0.0005
 
-# n1 = np.int32(np.sqrt((n_actions + 2) * N) + 2 * np.sqrt(N / (n_actions + 2)))
-# n2 = np.int32(n_actions * np.sqrt(N & (n_actions + 2)))
-
-# ****************************************
-# ****************************************
-# !! set parameters here!!
 n1 = 80
 n2 = 80
 # neuron network design
@@ -129,6 +133,7 @@ gradient_clip = True
 # optimizer clipping of gradient between 0.5 - 2
 clipping_value = 1.
 
+init_fill_fraction = 0.2
 CER = True
 dueling = True
 adaptiveC = False
@@ -136,7 +141,7 @@ preExit_episodeMin = 300
 # prematurely stop if average reward above a threshold
 premature_stop = False
 # load previous learned model, instead of learning from scratch
-loadPrev = True
+loadPrev = False
 modelFileName = 'neural-network-1.pth'
 
 # ****************************************
@@ -145,8 +150,9 @@ modelFileName = 'neural-network-1.pth'
 # suffix = "a_5e4_nn_{0}_{1}_".format(n1,n2) + "cer_1" + "duel_1_newDes_preExit_adapC_"
 # suffix = "a_5e4_nn_{0}_{1}_".format(n1,n2) + "cer_1" + "duel_1_newDes_preExit_"
 suffix = "a_5e4_nn_{0}_{1}_".format(n1,n2) + "cer_1" + "duel_1_newDes_tillEnd_loadPrev_"
-
-
+suffix += "fillFract_{:.0e}".format(init_fill_fraction)
+suffix += "loadPrev_{0}".format(loadPrev)
+suffix += "gamma_{0:.2e}".format(gamma)
 
 
 
@@ -158,6 +164,7 @@ suffix = "a_5e4_nn_{0}_{1}_".format(n1,n2) + "cer_1" + "duel_1_newDes_tillEnd_lo
 #     exp_cer = True, dueling = dueling):
 def DQN_learn(env, eps_decay_method = eps_decay_method, 
     discount_factor = gamma, buffer_size = L,  train_batch_size = N,
+    init_fill_fraction = init_fill_fraction,
     episodes = EPISODES, target_freq_update = C, learning_rate = alpha, 
     neuron_layers = neuron_layers, neuronNums = neuron_num_per_layer, clipping_value = clipping_value,
     exp_cer = True, dueling = dueling,premature_stop = premature_stop, threshold = 190, optimal_len = 50, adaptiveC=adaptiveC,
@@ -211,7 +218,9 @@ def DQN_learn(env, eps_decay_method = eps_decay_method,
     # new design
 
     agent = DQN_agent(n_actions, eps_decay_method=eps_decay_method, discount_factor = discount_factor, buffer_size = buffer_size,
-    cer = exp_cer, train_batch_size = train_batch_size, dueling = dueling, episodes = N_episodes, 
+    cer = exp_cer, train_batch_size = train_batch_size, dueling = dueling, 
+    init_fill_fraction = init_fill_fraction,
+    episodes = N_episodes, 
     target_freq_update = target_freq_update, learning_rate = learning_rate, 
     n_inputs = 8, layers = neuron_layers, neuronNums= neuronNums, 
     gradient_clip= gradient_clip, gradient_clip_max=clipping_value, adaptiveC=adaptiveC,
@@ -515,7 +524,7 @@ ax[0].plot([i for i in range(1, N_episodes+1)], running_average(
     episode_reward_list, n_ep_running_average), label='Avg. episode reward')
 ax[0].set_xlabel('Episodes')
 ax[0].set_ylabel('Total reward')
-ax[0].set_title('Total Reward vs Episodes')
+ax[0].set_title('Total Reward vs Episodes, gamma: {0}'.format(gamma))
 ax[0].legend()
 ax[0].grid(alpha=0.3)
 
@@ -524,7 +533,7 @@ ax[1].plot([i for i in range(1, N_episodes+1)], running_average(
     episode_number_of_steps, n_ep_running_average), label='Avg. number of steps per episode')
 ax[1].set_xlabel('Episodes')
 ax[1].set_ylabel('Total number of steps')
-ax[1].set_title('Total number of steps vs Episodes')
+ax[1].set_title('Total number of steps vs Episodes, gamma: {0}'.format(gamma))
 ax[1].legend()
 ax[1].grid(alpha=0.3)
 saveName = "tempPlot_" + suffix + ".png"
