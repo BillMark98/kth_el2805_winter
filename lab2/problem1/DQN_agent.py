@@ -19,12 +19,10 @@
 # Load packages
 import numpy as np
 import torch
-from torch._C import Value
 from torch.autograd import grad
 # torch neuron network
 import torch.nn as nn
 from torch.nn.modules import loss
-from ReplayBuffer import ExperienceReplayBuffer, Experience
 import torch.optim as optim
 import random
 

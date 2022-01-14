@@ -26,7 +26,6 @@ import matplotlib.pyplot as plt
 from tqdm import trange
 from DQN_agent import RandomAgent
 from DQN_agent import DQN_NeuronNetwork, DQN_agent
-from ReplayBuffer import ExperienceReplayBuffer, Experience
 import torch.optim as optim
 import random
 
